@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Cálculo de Asistencia y Nómina v6.0</title>
+    <title>Sistema de Cálculo de Asistencia y Nómina v6.2</title>
     <!-- Biblioteca para analizar PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <!-- Biblioteca para exportar a PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; background-color: #f5f7fa; color: #333; }
@@ -76,7 +78,7 @@
 
 <div class="container">
     <h1>
-        <span>Sistema de Cálculo de Asistencia y Nómina v6.0</span>
+        <span>Sistema de Cálculo de Asistencia y Nómina v6.2</span>
         <div>
             <button class="btn btn-warning" onclick="toggleSettings()" id="settingsBtn" style="display:none; font-size: 14px; padding: 8px 15px;">⚙️ Configuración de Horarios</button>
             <button class="btn btn-export" onclick="printAllReports()" id="exportBtn" style="display:none;">🖨️ Imprimir Reportes (Vertical)</button>
@@ -130,10 +132,13 @@
     </div>
 
     <div class="dashboard-panel" id="dashboardPanel">
-        <div class="dashboard-title">📊 Resumen Mensual de Asistencia</div>
+        <div class="dashboard-title">📊 Resumen Mensual de Asistencia (Cálculo Inteligente)</div>
         <div class="dashboard-grid">
             <div class="dash-card"><div class="title">✅ Días Asistidos</div><div class="value val-green" id="dash-normal">0 Días</div></div>
-            <div class="dash-card"><div class="title">⚠️ Anomalías/Faltas</div><div class="value val-red" id="dash-missing">0 Días</div></div>
+            
+            <!-- Cambio 1: Horas Totales en la parte superior -->
+            <div class="dash-card"><div class="title">⏱️ Horas Totales</div><div class="value" style="color: #0050b3;" id="dash-total-hours">0h 0m</div></div>
+            
             <div class="dash-card"><div class="title">⏳ Atraso Acumulado</div><div class="value val-red" id="dash-late">0 mins</div></div>
             <div class="dash-card"><div class="title">💪 Horas Extras</div><div class="value val-green" id="dash-ot">0 mins</div></div>
             <div class="dash-card" style="background: #e6f7ff; border-color: #91d5ff;">
@@ -161,14 +166,17 @@
     </table>
 
     <div id="leaveDetailsPanel" style="display:none; margin-top: 25px; background: #fffbe6; border: 1px solid #ffe58f; padding: 15px; border-radius: 6px;">
-        <div class="dashboard-title" style="color: #856404; margin-bottom: 15px; border-bottom: 1px dashed #ffe58f; padding-bottom: 10px;">🏖️ Resumen de Permisos y Ausencias</div>
+        <div class="dashboard-title" style="color: #856404; margin-bottom: 15px; border-bottom: 1px dashed #ffe58f; padding-bottom: 10px;">🏖️ Resumen de Permisos y Detalles</div>
         <div class="dashboard-grid" style="grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px;">
             <div class="dash-card" style="background: white; border-color: #eee; padding: 10px;"><div class="title">Permiso</div><div class="value" id="dash-leave-personal" style="font-size: 18px;">0 Días</div></div>
             <div class="dash-card" style="background: white; border-color: #eee; padding: 10px;"><div class="title">Incapacidad</div><div class="value" id="dash-leave-sick" style="font-size: 18px;">0 Días</div></div>
-            <div class="dash-card" style="background: white; border-color: #eee; padding: 10px;"><div class="title">Día Libre</div><div class="value" id="dash-leave-holiday" style="font-size: 18px;">0 Días</div></div>
-            <div class="dash-card" style="background: white; border-color: #eee; padding: 10px;"><div class="title">Día Festivo</div><div class="value" id="dash-leave-festival" style="font-size: 18px;">0 Días</div></div>
+            <div class="dash-card" style="background: white; border-color: #eee; padding: 10px;"><div class="title">Vacaciones/Festivo</div><div class="value" id="dash-leave-holiday" style="font-size: 18px;">0 Días</div></div>
             <div class="dash-card" style="background: white; border-color: #eee; padding: 10px;"><div class="title">Falta</div><div class="value" id="dash-leave-absent" style="font-size: 18px;">0 Días</div></div>
-            <div class="dash-card" style="background: white; border-color: #eee; padding: 10px;"><div class="title">Otro</div><div class="value" id="dash-leave-other" style="font-size: 18px;">0 Días</div></div>
+            
+            <!-- Cambio 2: Días de Atraso movido a la parte inferior y resaltado en rojo -->
+            <div class="dash-card" style="background: #fff5f5; border-color: #ffccc7; padding: 10px;"><div class="title" style="color: #d9534f;">Días de Atraso</div><div class="value" id="dash-bottom-late-days" style="font-size: 18px; color: #d9534f;">0 Días</div></div>
+            
+            <div class="dash-card" style="background: white; border-color: #eee; padding: 10px;"><div class="title">Otras Anomalías</div><div class="value" id="dash-leave-other" style="font-size: 18px;">0 Días</div></div>
         </div>
     </div>
 
@@ -183,7 +191,9 @@
     let currentSelectedEmployee = "";
     let globalMealBreakMins = 30;
     let weekendNoBreak = true; 
-    const leaveCategories = ["Permiso", "Incapacidad", "Día Libre", "Día Festivo", "Falta"];
+    
+    // Mantenemos "Imprevisto" para el menú desplegable (para anular atrasos)
+    const leaveCategories = ["Permiso", "Incapacidad", "Vacaciones", "Día Festivo", "Falta", "Imprevisto"];
 
     let globalSchedules = {
         'lunes': { in: "08:30", out: "17:00", name: "Lunes" },
@@ -416,8 +426,8 @@
 
     function calculateEmployeeData(empName) {
         const records = employeesData[empName];
-        let dashNormal = 0, dashMissing = 0, sumLateMins = 0, sumOTMins = 0, sumPenaltyMins = 0;
-        let leaveCounts = { 'Permiso': 0, 'Incapacidad': 0, 'Día Libre': 0, 'Día Festivo': 0, 'Falta': 0, 'Otro': 0 };
+        let dashNormal = 0, dashLateDays = 0, sumLateMins = 0, sumOTMins = 0, sumPenaltyMins = 0, sumWorkedMins = 0;
+        let leaveCounts = { 'Permiso': 0, 'Incapacidad': 0, 'Vacaciones': 0, 'Día Festivo': 0, 'Falta': 0, 'Imprevisto': 0, 'Otro': 0 };
         
         let processedRows = [];
 
@@ -443,10 +453,20 @@
                     sM += 10; if(sM >= 60) { sH++; sM -= 60; }
                     let threshT = `${sH.toString().padStart(2,'0')}:${sM.toString().padStart(2,'0')}`;
                     if (inT > threshT) dailyLate = getMinutesDiff(inT, threshT);
-                    if (workedMins > reqMins) dailyOT = workedMins - reqMins;
+                    
+                    // Si el total de horas trabajadas compensa el atraso, se anula el atraso
+                    if (workedMins >= reqMins) {
+                        dailyOT = workedMins - reqMins;
+                        dailyLate = 0; 
+                    }
                 } else {
                     dailyOT = workedMins; 
                 }
+            }
+
+            // Etiqueta Imprevisto anula el atraso
+            if (data.remark === "Imprevisto") {
+                dailyLate = 0;
             }
 
             let sysCode = "NORMAL", sysText = "Normal";
@@ -466,7 +486,7 @@
                 if (texts.length > 0) {
                     sysText = texts.join(' | ');
                 } else {
-                    sysText = "Normal";
+                    sysText = data.remark === "Imprevisto" ? "Normal (Imprevisto)" : "Normal";
                 }
             }
 
@@ -500,11 +520,17 @@
             if (finalCode === 'NORMAL' || finalCode === 'OVERTIME' || (finalCode === 'LATE' && !data.finalStatus) || (finalCode === 'WEEKEND' && effRecord)) {
                 if (effRecord) dashNormal++; 
                 sumLateMins += dailyLate; sumOTMins += dailyOT;
-            } else if (finalCode === 'EXCEPTION') {
-                if (!matchedLeave) dashMissing++; 
             } else if (sysCode === 'EMPTY' || sysCode === 'PARTIAL') {
-                if (!matchedLeave) dashMissing++;
+                if (!matchedLeave) leaveCounts['Otro']++;
             }
+
+            // Calculando días de atraso
+            if (dailyLate > 0) {
+                dashLateDays++;
+            }
+
+            // Acumulando horas totales trabajadas en el mes
+            sumWorkedMins += workedMins;
 
             processedRows.push({
                 index, data, isRestDay, schedule, effRecord, workedMins, reqMins, dailyPenalty,
@@ -514,7 +540,7 @@
 
         let netMins = sumOTMins - sumLateMins - sumPenaltyMins;
 
-        return { rows: processedRows, dashNormal, dashMissing, leaveCounts, sumLateMins, sumOTMins, netMins };
+        return { rows: processedRows, dashNormal, dashLateDays, leaveCounts, sumLateMins, sumOTMins, netMins, sumWorkedMins };
     }
 
     function renderTable(empName) {
@@ -564,9 +590,10 @@
                     <option value="">- Seleccione Estado -</option>
                     <option value="Permiso" ${selValue==='Permiso'?'selected':''}>Permiso</option>
                     <option value="Incapacidad" ${selValue==='Incapacidad'?'selected':''}>Incapacidad</option>
-                    <option value="Día Libre" ${selValue==='Día Libre'?'selected':''}>Día Libre</option>
+                    <option value="Vacaciones" ${selValue==='Vacaciones'?'selected':''}>Vacaciones</option>
                     <option value="Día Festivo" ${selValue==='Día Festivo'?'selected':''}>Día Festivo</option>
                     <option value="Falta" ${selValue==='Falta'?'selected':''}>Falta</option>
+                    <option value="Imprevisto" ${selValue==='Imprevisto'?'selected':''}>Imprevisto (Sin Atraso)</option>
                     <option value="Otro" ${selValue==='Otro'?'selected':''}>Otro (Especifique)</option>
                 </select>
                 <input type="text" id="rmk-txt-${index}" class="remark-input" placeholder="Ingrese el motivo..." value="${txtValue}" style="display: ${selValue==='Otro'?'block':'none'}; width: 100%; box-sizing: border-box;">
@@ -606,15 +633,21 @@
         });
 
         document.getElementById('dash-normal').innerText = `${result.dashNormal} Días`;
-        document.getElementById('dash-missing').innerText = `${result.dashMissing} Días`;
+        
+        // Actualizando el panel con Horas Totales
+        document.getElementById('dash-total-hours').innerText = formatMins(result.sumWorkedMins);
+        
         document.getElementById('dash-late').innerText = formatMins(result.sumLateMins);
         document.getElementById('dash-ot').innerText = formatMins(result.sumOTMins);
         
         document.getElementById('dash-leave-personal').innerText = `${result.leaveCounts['Permiso']} Días`;
         document.getElementById('dash-leave-sick').innerText = `${result.leaveCounts['Incapacidad']} Días`;
-        document.getElementById('dash-leave-holiday').innerText = `${result.leaveCounts['Día Libre']} Días`;
-        document.getElementById('dash-leave-festival').innerText = `${result.leaveCounts['Día Festivo']} Días`;
+        document.getElementById('dash-leave-holiday').innerText = `${result.leaveCounts['Vacaciones'] + result.leaveCounts['Día Festivo']} Días`;
         document.getElementById('dash-leave-absent').innerText = `${result.leaveCounts['Falta']} Días`;
+        
+        // Actualizando el Días de Atraso en la parte inferior (resaltado en rojo)
+        document.getElementById('dash-bottom-late-days').innerText = `${result.dashLateDays} Días`;
+        
         document.getElementById('dash-leave-other').innerText = `${result.leaveCounts['Otro']} Días`;
 
         let netEl = document.getElementById('dash-net');
@@ -653,8 +686,8 @@
                 <h2 style="border-bottom:2px solid #ddd; padding-bottom:8px; margin-top:0;">👤 Reporte de Asistencia: <span style="color:#0050b3">${empName}</span></h2>
                 <div style="display:flex; justify-content:space-between; margin-bottom:15px; background:#fafafa; padding:10px; border:1px solid #eee; border-radius:6px; font-size:13px;">
                     <div>✅ Asistencia: <strong style="color:#5cb85c">${result.dashNormal} d</strong></div>
-                    <div>⚠️ Anomalía: <strong style="color:#d9534f">${result.dashMissing} d</strong></div>
-                    <div>⏳ Atrasos: <strong style="color:#d9534f">${formatMins(result.sumLateMins)}</strong></div>
+                    <div>⏱️ Horas Totales: <strong style="color:#0050b3">${formatMins(result.sumWorkedMins)}</strong></div>
+                    <div>⏳ Atraso Total: <strong style="color:#d9534f">${formatMins(result.sumLateMins)}</strong></div>
                     <div>💪 Extras: <strong style="color:#5cb85c">${formatMins(result.sumOTMins)}</strong></div>
                     <div>⚖️ Neto: ${netHtml}</div>
                 </div>
@@ -678,7 +711,7 @@
 
                 let textHtml = "", bgStyle = "";
                 if (finalCode === 'NORMAL' && data.finalStatus) textHtml = `<span style="color:#5cb85c;font-weight:bold;">✅ Aprobado Normal</span>`;
-                else if (finalCode === 'EXCEPTION' && data.finalStatus) textHtml = `<span style="color:#d9534f;font-weight:bold;">❌ Anomalía</span>`;
+                else if (finalCode === 'EXCEPTION' && data.finalStatus) textHtml = `<span style="color:#d9534f;font-weight:bold;">❌ Anomalía Confirmada</span>`;
                 else {
                     if (sysCode === 'LATE' || sysCode === 'PARTIAL' || sysCode === 'EMPTY') textHtml = `<span style="color:#d9534f;font-weight:bold;">${sysText}</span>`;
                     else if (sysCode === 'NORMAL' || sysCode === 'OVERTIME') textHtml = `<span style="color:#5cb85c;font-weight:bold;">${sysText}</span>`;
@@ -688,7 +721,7 @@
                     }
                 }
 
-                const offHtml = isRestDay ? `<span style='color:#aaa'>Descanso</span>` : `${schedule.in}-${schedule.out}`;
+                const offHtml = isRestDay ? "<span style='color:#aaa'>Descanso</span>" : `${schedule.in}-${schedule.out}`;
                 let isHoursMet = isRestDay ? (workedMins > 0) : (workedMins >= reqMins);
                 
                 let hoursHtml = `<span style="color:#aaa">-</span>`;
@@ -702,7 +735,7 @@
                     hoursHtml = `<span style="color:${isHoursMet ? '#5cb85c' : '#d9534f'}; font-weight:bold;">${Math.floor(workedMins/60)}h ${workedMins%60}m</span>`;
                 }
                 
-                let recHtml = data.adjustedRecord ? `<strong>${data.adjustedRecord}</strong> <span style="color:green;font-size:10px;">(Modificado)</span>` : `<strong>${data.record || ""}</strong>`;
+                let recHtml = data.adjustedRecord ? `<strong>${data.adjustedRecord}</strong> <span style="color:green;font-size:10px;">(Mod)</span>` : `<strong>${data.record || ""}</strong>`;
                 let rmkHtml = data.remark || `<span style="color:#aaa">-</span>`;
 
                 return `<tr style="${bgStyle}">
@@ -718,11 +751,11 @@
 
             let leaveSummaryHTML = `
                 <div style="display:flex; justify-content:space-between; margin-top:15px; background:#fffbe6; padding:10px; border:1px solid #ffe58f; border-radius:6px; font-size:13px;">
-                    <div style="color:#856404; font-weight:bold;">🏖️ Total de Ausencias:</div>
+                    <div style="color:#856404; font-weight:bold;">🏖️ Detalles de Ausencias:</div>
                     <div>Permiso: <strong>${result.leaveCounts['Permiso']} d</strong></div>
                     <div>Incapacidad: <strong>${result.leaveCounts['Incapacidad']} d</strong></div>
-                    <div>Día Libre: <strong>${result.leaveCounts['Día Libre']} d</strong></div>
-                    <div>Día Festivo: <strong>${result.leaveCounts['Día Festivo']} d</strong></div>
+                    <div>Vacaciones/Festivo: <strong>${result.leaveCounts['Vacaciones'] + result.leaveCounts['Día Festivo']} d</strong></div>
+                    <div>Días de Atraso: <strong style="color:#d9534f">${result.dashLateDays} d</strong></div>
                     <div>Falta: <strong>${result.leaveCounts['Falta']} d</strong></div>
                     <div>Otro: <strong>${result.leaveCounts['Otro']} d</strong></div>
                 </div>
