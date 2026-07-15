@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistema de Cálculo de Asistencia y Nómina v6.0</title>
-    <!-- PDF 解析库 -->
+    <!-- Biblioteca para analizar PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     
     <style>
@@ -100,7 +100,14 @@
         <div style="background: white; padding: 15px; border-radius: 4px; border: 1px solid #eee; margin-bottom: 15px;">
             <strong style="color: #0050b3;">🍽️ Descanso diario a deducir:</strong>
             <input type="number" id="mealBreakInput" value="30" style="width: 80px; padding: 5px;"> mins 
-            <span class="empty-cell-text">(Se deducirá del tiempo de trabajo total)</span>
+            <span class="empty-cell-text">(Se deducirá del tiempo de trabajo total en días normales)</span>
+            
+            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ccc;">
+                <label style="cursor: pointer; font-weight: bold; color: #d9534f;">
+                    <input type="checkbox" id="weekendNoBreakCheckbox" checked> 
+                    🚫 No deducir tiempo de descanso al trabajar en fin de semana (Sáb/Dom)
+                </label>
+            </div>
         </div>
 
         <button class="btn btn-blue" onclick="saveSettings()" style="font-size: 14px; padding: 8px 20px;">💾 Guardar Configuración y Recalcular</button>
@@ -158,7 +165,7 @@
         <div class="dashboard-grid" style="grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px;">
             <div class="dash-card" style="background: white; border-color: #eee; padding: 10px;"><div class="title">Permiso</div><div class="value" id="dash-leave-personal" style="font-size: 18px;">0 Días</div></div>
             <div class="dash-card" style="background: white; border-color: #eee; padding: 10px;"><div class="title">Incapacidad</div><div class="value" id="dash-leave-sick" style="font-size: 18px;">0 Días</div></div>
-            <div class="dash-card" style="background: white; border-color: #eee; padding: 10px;"><div class="title">Vacaciones</div><div class="value" id="dash-leave-holiday" style="font-size: 18px;">0 Días</div></div>
+            <div class="dash-card" style="background: white; border-color: #eee; padding: 10px;"><div class="title">Día Libre</div><div class="value" id="dash-leave-holiday" style="font-size: 18px;">0 Días</div></div>
             <div class="dash-card" style="background: white; border-color: #eee; padding: 10px;"><div class="title">Día Festivo</div><div class="value" id="dash-leave-festival" style="font-size: 18px;">0 Días</div></div>
             <div class="dash-card" style="background: white; border-color: #eee; padding: 10px;"><div class="title">Falta</div><div class="value" id="dash-leave-absent" style="font-size: 18px;">0 Días</div></div>
             <div class="dash-card" style="background: white; border-color: #eee; padding: 10px;"><div class="title">Otro</div><div class="value" id="dash-leave-other" style="font-size: 18px;">0 Días</div></div>
@@ -175,7 +182,8 @@
     let employeesData = {}; 
     let currentSelectedEmployee = "";
     let globalMealBreakMins = 30;
-    const leaveCategories = ["Permiso", "Incapacidad", "Vacaciones", "Día Festivo", "Falta"];
+    let weekendNoBreak = true; 
+    const leaveCategories = ["Permiso", "Incapacidad", "Día Libre", "Día Festivo", "Falta"];
 
     let globalSchedules = {
         'lunes': { in: "08:30", out: "17:00", name: "Lunes" },
@@ -348,6 +356,7 @@
 
     function saveSettings() {
         globalMealBreakMins = parseInt(document.getElementById('mealBreakInput').value) || 0;
+        weekendNoBreak = document.getElementById('weekendNoBreakCheckbox').checked; 
         const scope = document.getElementById('settingScope').value;
         
         if (scope === 'global') {
@@ -408,7 +417,7 @@
     function calculateEmployeeData(empName) {
         const records = employeesData[empName];
         let dashNormal = 0, dashMissing = 0, sumLateMins = 0, sumOTMins = 0;
-        let leaveCounts = { 'Permiso': 0, 'Incapacidad': 0, 'Vacaciones': 0, 'Día Festivo': 0, 'Falta': 0, 'Otro': 0 };
+        let leaveCounts = { 'Permiso': 0, 'Incapacidad': 0, 'Día Libre': 0, 'Día Festivo': 0, 'Falta': 0, 'Otro': 0 };
         
         let processedRows = [];
 
@@ -423,7 +432,11 @@
 
             if (effRecord && effRecord.includes("-")) {
                 const [inT, outT] = effRecord.split("-").map(t => t.trim());
-                workedMins = getMinutesDiff(outT, inT) - globalMealBreakMins; 
+                
+                let isWeekend = (dayKey === 'sábado' || dayKey === 'domingo');
+                let currentMealDeduction = (isWeekend && weekendNoBreak) ? 0 : globalMealBreakMins;
+
+                workedMins = getMinutesDiff(outT, inT) - currentMealDeduction; 
                 if (workedMins < 0) workedMins = 0;
 
                 if (!isRestDay) {
@@ -541,7 +554,7 @@
                     <option value="">- Seleccione Estado -</option>
                     <option value="Permiso" ${selValue==='Permiso'?'selected':''}>Permiso</option>
                     <option value="Incapacidad" ${selValue==='Incapacidad'?'selected':''}>Incapacidad</option>
-                    <option value="Vacaciones" ${selValue==='Vacaciones'?'selected':''}>Vacaciones</option>
+                    <option value="Día Libre" ${selValue==='Día Libre'?'selected':''}>Día Libre</option>
                     <option value="Día Festivo" ${selValue==='Día Festivo'?'selected':''}>Día Festivo</option>
                     <option value="Falta" ${selValue==='Falta'?'selected':''}>Falta</option>
                     <option value="Otro" ${selValue==='Otro'?'selected':''}>Otro (Especifique)</option>
@@ -589,7 +602,7 @@
         
         document.getElementById('dash-leave-personal').innerText = `${result.leaveCounts['Permiso']} Días`;
         document.getElementById('dash-leave-sick').innerText = `${result.leaveCounts['Incapacidad']} Días`;
-        document.getElementById('dash-leave-holiday').innerText = `${result.leaveCounts['Vacaciones']} Días`;
+        document.getElementById('dash-leave-holiday').innerText = `${result.leaveCounts['Día Libre']} Días`;
         document.getElementById('dash-leave-festival').innerText = `${result.leaveCounts['Día Festivo']} Días`;
         document.getElementById('dash-leave-absent').innerText = `${result.leaveCounts['Falta']} Días`;
         document.getElementById('dash-leave-other').innerText = `${result.leaveCounts['Otro']} Días`;
@@ -694,7 +707,7 @@
                     <div style="color:#856404; font-weight:bold;">🏖️ Total de Ausencias:</div>
                     <div>Permiso: <strong>${result.leaveCounts['Permiso']} d</strong></div>
                     <div>Incapacidad: <strong>${result.leaveCounts['Incapacidad']} d</strong></div>
-                    <div>Vacaciones: <strong>${result.leaveCounts['Vacaciones']} d</strong></div>
+                    <div>Día Libre: <strong>${result.leaveCounts['Día Libre']} d</strong></div>
                     <div>Día Festivo: <strong>${result.leaveCounts['Día Festivo']} d</strong></div>
                     <div>Falta: <strong>${result.leaveCounts['Falta']} d</strong></div>
                     <div>Otro: <strong>${result.leaveCounts['Otro']} d</strong></div>
