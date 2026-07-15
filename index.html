@@ -416,7 +416,7 @@
 
     function calculateEmployeeData(empName) {
         const records = employeesData[empName];
-        let dashNormal = 0, dashMissing = 0, sumLateMins = 0, sumOTMins = 0;
+        let dashNormal = 0, dashMissing = 0, sumLateMins = 0, sumOTMins = 0, sumPenaltyMins = 0;
         let leaveCounts = { 'Permiso': 0, 'Incapacidad': 0, 'Día Libre': 0, 'Día Festivo': 0, 'Falta': 0, 'Otro': 0 };
         
         let processedRows = [];
@@ -427,15 +427,14 @@
             const isRestDay = !schedule.in || !schedule.out;
             let effRecord = data.adjustedRecord || data.record;
             
-            let workedMins = 0, dailyLate = 0, dailyOT = 0, reqMins = 0;
+            let isWeekend = (dayKey === 'sábado' || dayKey === 'domingo');
+            let currentMealDeduction = (isWeekend && weekendNoBreak) ? 0 : globalMealBreakMins;
+
+            let workedMins = 0, dailyLate = 0, dailyOT = 0, reqMins = 0, dailyPenalty = 0;
             if (!isRestDay) reqMins = getMinutesDiff(schedule.out, schedule.in);
 
             if (effRecord && effRecord.includes("-")) {
                 const [inT, outT] = effRecord.split("-").map(t => t.trim());
-                
-                let isWeekend = (dayKey === 'sábado' || dayKey === 'domingo');
-                let currentMealDeduction = (isWeekend && weekendNoBreak) ? 0 : globalMealBreakMins;
-
                 workedMins = getMinutesDiff(outT, inT) - currentMealDeduction; 
                 if (workedMins < 0) workedMins = 0;
 
@@ -478,6 +477,13 @@
                 workedMins = 0;
                 dailyLate = 0;
                 dailyOT = 0;
+                
+                if (data.remark === "Permiso" || data.remark === "Falta") {
+                    let expectedMins = reqMins - currentMealDeduction;
+                    if (expectedMins < 0) expectedMins = 0;
+                    dailyPenalty = expectedMins;
+                    sumPenaltyMins += dailyPenalty;
+                }
             }
 
             let matchedLeave = false;
@@ -501,12 +507,12 @@
             }
 
             processedRows.push({
-                index, data, isRestDay, schedule, effRecord, workedMins, reqMins, 
+                index, data, isRestDay, schedule, effRecord, workedMins, reqMins, dailyPenalty,
                 sysCode, sysText, finalCode, needsAction: (!data.finalStatus && (sysCode === 'EMPTY' || sysCode === 'PARTIAL' || sysCode === 'LATE'))
             });
         });
 
-        let netMins = sumOTMins - sumLateMins;
+        let netMins = sumOTMins - sumLateMins - sumPenaltyMins;
 
         return { rows: processedRows, dashNormal, dashMissing, leaveCounts, sumLateMins, sumOTMins, netMins };
     }
@@ -517,7 +523,7 @@
         tbody.innerHTML = '';
 
         result.rows.forEach(r => {
-            const { index, data, isRestDay, schedule, effRecord, workedMins, reqMins, sysCode, sysText, finalCode, needsAction } = r;
+            const { index, data, isRestDay, schedule, effRecord, workedMins, reqMins, dailyPenalty, sysCode, sysText, finalCode, needsAction } = r;
 
             let textHtml = "", rowClass = "";
             if (finalCode === 'NORMAL' && data.finalStatus) textHtml = `<span class="status-normal">✅ Aprobado Normal</span>`;
@@ -536,7 +542,11 @@
             
             let hoursHtml = `<span class="empty-cell-text">-</span>`;
             if (finalCode === 'EXCEPTION' && data.finalStatus) {
-                hoursHtml = `<span style="color:#d9534f; font-weight:bold; text-decoration: line-through;">0h 0m</span> <span style="font-size:10px;color:#d9534f">(Deducido)</span>`;
+                if (dailyPenalty > 0) {
+                    hoursHtml = `<span style="color:#d9534f; font-weight:bold;">-${Math.floor(dailyPenalty/60)}h ${dailyPenalty%60}m</span> <span style="font-size:10px;color:#d9534f">(Deducido)</span>`;
+                } else {
+                    hoursHtml = `<span style="color:#856404; font-weight:bold;">0h 0m</span> <span style="font-size:10px;color:#856404">(Exento)</span>`;
+                }
             } else if (effRecord && effRecord.includes("-")) {
                 hoursHtml = `<span class="${isHoursMet ? 'status-normal' : 'status-late'}">${Math.floor(workedMins/60)}h ${workedMins%60}m</span>`;
             }
@@ -664,7 +674,7 @@
             `;
 
             let rowsHTML = result.rows.map(r => {
-                const { data, isRestDay, schedule, effRecord, workedMins, reqMins, sysCode, sysText, finalCode } = r;
+                const { data, isRestDay, schedule, effRecord, workedMins, reqMins, dailyPenalty, sysCode, sysText, finalCode } = r;
 
                 let textHtml = "", bgStyle = "";
                 if (finalCode === 'NORMAL' && data.finalStatus) textHtml = `<span style="color:#5cb85c;font-weight:bold;">✅ Aprobado Normal</span>`;
@@ -683,7 +693,11 @@
                 
                 let hoursHtml = `<span style="color:#aaa">-</span>`;
                 if (finalCode === 'EXCEPTION' && data.finalStatus) {
-                    hoursHtml = `<span style="color:#d9534f; font-weight:bold; text-decoration: line-through;">Deducido a 0</span>`;
+                    if (dailyPenalty > 0) {
+                        hoursHtml = `<span style="color:#d9534f; font-weight:bold;">-${Math.floor(dailyPenalty/60)}h ${dailyPenalty%60}m</span> <span style="font-size:10px;color:#d9534f">(Deducido)</span>`;
+                    } else {
+                        hoursHtml = `<span style="color:#856404; font-weight:bold;">0h 0m</span> <span style="font-size:10px;color:#856404">(Exento)</span>`;
+                    }
                 } else if (effRecord && effRecord.includes("-")) {
                     hoursHtml = `<span style="color:${isHoursMet ? '#5cb85c' : '#d9534f'}; font-weight:bold;">${Math.floor(workedMins/60)}h ${workedMins%60}m</span>`;
                 }
