@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Cálculo de Asistencia y Nómina v6.0</title>
+    <!-- PDF 解析库 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; background-color: #f5f7fa; color: #333; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { font-size: 24px; border-bottom: 2px solid #eee; padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+        .upload-section { margin: 20px 0; padding: 20px; background: #fafafa; border: 2px dashed #d9d9d9; text-align: center; border-radius: 6px; }
+        
+        .control-panel { display: none; background: #e6f7ff; border: 1px solid #91d5ff; padding: 15px; margin-bottom: 15px; border-radius: 6px; align-items: center; justify-content: space-between; }
+        .employee-selector select { padding: 8px; font-size: 16px; border-radius: 4px; margin-left: 10px; }
+        .employee-name-display { font-size: 20px; font-weight: bold; color: #0050b3; }
+
+        .dashboard-panel { display: none; background: #fff; border: 1px solid #d9d9d9; padding: 15px; margin-bottom: 20px; border-radius: 6px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .dashboard-title { font-size: 16px; font-weight: bold; margin-bottom: 10px; border-bottom: 1px dashed #eee; padding-bottom: 5px; color: #555;}
+        .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; }
+        .dash-card { background: #fafafa; border: 1px solid #eee; padding: 15px; border-radius: 6px; text-align: center; }
+        .dash-card .title { font-size: 13px; color: #666; margin-bottom: 8px; }
+        .dash-card .value { font-size: 22px; font-weight: bold; color: #333; }
+        .val-green { color: #5cb85c !important; }
+        .val-red { color: #d9534f !important; }
+
+        .settings-panel { display: none; background: #fffbe6; border: 1px solid #ffe58f; padding: 15px; margin-bottom: 20px; border-radius: 6px; }
+        .settings-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #ffe58f; padding-bottom: 10px;}
+        .scope-selector { background: #fff; padding: 6px 10px; border: 1px solid #d9d9d9; border-radius: 4px; font-weight: bold; color: #d9534f; }
+        .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 15px; }
+        .setting-item { background: white; padding: 10px; border-radius: 4px; border: 1px solid #eee; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: center; vertical-align: middle; }
+        th { background-color: #f0f2f5; font-weight: 600; }
+        
+        .status-late { color: #d9534f; font-weight: bold; } 
+        .status-normal { color: #5cb85c; font-weight: bold; } 
+        .status-exception { background-color: #fff3cd; } 
+        .status-weekend { background-color: #f8d7da; } 
+        .text-exception { color: #856404; font-weight: bold; }
+        .official-time { color: #555; background-color: #fafafa; }
+        
+        input[type="time"] { padding: 4px; border: 1px solid #ccc; border-radius: 4px; margin: 0 2px; }
+        input[type="text"].remark-input { padding: 6px; border: 1px solid #ccc; border-radius: 4px; width: 120px; }
+        select.remark-select { padding: 5px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; margin-bottom: 5px; }
+        
+        .btn { padding: 6px 10px; cursor: pointer; border: none; border-radius: 4px; font-weight: bold; margin: 2px; color: white; font-size: 12px;}
+        .btn-green { background-color: #28a745; } .btn-green:hover { background-color: #218838; }
+        .btn-red { background-color: #dc3545; } .btn-red:hover { background-color: #c82333; }
+        .btn-blue { background-color: #007bff; } .btn-blue:hover { background-color: #0056b3; }
+        .btn-warning { background-color: #ffc107; color: #333; font-size: 12px; padding: 6px 10px;} .btn-warning:hover { background-color: #e0a800; }
+        .btn-export { background-color: #17a2b8; color: white; font-size: 14px; padding: 8px 15px; margin-left: 10px;} .btn-export:hover { background-color: #138496; }
+        
+        .action-group { margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px dashed #ccc; }
+        .action-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        #loading { display: none; color: #007bff; margin-top: 10px; font-weight: bold;}
+        .empty-cell-text { color: #aaa; font-size: 12px; }
+        .personal-badge { background-color: #17a2b8; color: white; padding: 2px 6px; border-radius: 10px; font-size: 10px; margin-left: 5px; }
+
+        #pdf-export-container { display: none; }
+
+        @media print {
+            @page { size: portrait; margin: 10mm; } 
+            body { background-color: #fff !important; padding: 0 !important; margin: 0 !important; }
+            .container { display: none !important; } 
+            #pdf-export-container { display: block !important; width: 100% !important; margin: 0; padding: 0; }
+            .page-break { page-break-after: always; } 
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } 
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>
+        <span>Sistema de Cálculo de Asistencia y Nómina v6.0</span>
+        <div>
+            <button class="btn btn-warning" onclick="toggleSettings()" id="settingsBtn" style="display:none; font-size: 14px; padding: 8px 15px;">⚙️ Configuración de Horarios</button>
+            <button class="btn btn-export" onclick="printAllReports()" id="exportBtn" style="display:none;">🖨️ Imprimir Reportes (Vertical)</button>
+        </div>
+    </h1>
+    
+    <div class="settings-panel" id="settingsPanel">
+        <div class="settings-header">
+            <h3 style="margin:0; color:#856404;">📅 Configuración de Reglas de Asistencia</h3>
+            <div class="scope-selector">
+                <label for="settingScope">Alcance:</label>
+                <select id="settingScope" onchange="switchSettingScope()">
+                    <option value="global">🌍 Todos (Predeterminado)</option>
+                    <option value="personal">👤 Solo Empleado Actual (<span id="settingEmpNameLabel">--</span>)</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="settings-grid" id="settingsGrid"></div>
+        
+        <div style="background: white; padding: 15px; border-radius: 4px; border: 1px solid #eee; margin-bottom: 15px;">
+            <strong style="color: #0050b3;">🍽️ Descanso diario a deducir:</strong>
+            <input type="number" id="mealBreakInput" value="30" style="width: 80px; padding: 5px;"> mins 
+            <span class="empty-cell-text">(Se deducirá del tiempo de trabajo total)</span>
+        </div>
+
+        <button class="btn btn-blue" onclick="saveSettings()" style="font-size: 14px; padding: 8px 20px;">💾 Guardar Configuración y Recalcular</button>
+    </div>
+
+    <div class="upload-section">
+        <p>Por favor, seleccione el archivo PDF exportado del reloj checador</p>
+        <input type="file" id="pdfFileInput" accept="application/pdf" />
+        <div id="loading">Extrayendo datos y procesando coordenadas, por favor espere...</div>
+    </div>
+
+    <div class="control-panel" id="controlPanel">
+        <div class="employee-selector">
+            <label for="empSelect"><strong>Seleccionar Empleado:</strong></label>
+            <select id="empSelect" onchange="switchEmployee()"></select>
+        </div>
+        <div class="employee-name-display">
+            Viendo actualmente: <span id="currentName">--</span>
+        </div>
+    </div>
+
+    <div class="dashboard-panel" id="dashboardPanel">
+        <div class="dashboard-title">📊 Resumen Mensual de Asistencia</div>
+        <div class="dashboard-grid">
+            <div class="dash-card"><div class="title">✅ Días Asistidos</div><div class="value val-green" id="dash-normal">0 Días</div></div>
+            <div class="dash-card"><div class="title">⚠️ Anomalías/Faltas</div><div class="value val-red" id="dash-missing">0 Días</div></div>
+            <div class="dash-card"><div class="title">⏳ Atraso Acumulado</div><div class="value val-red" id="dash-late">0 mins</div></div>
+            <div class="dash-card"><div class="title">💪 Horas Extras</div><div class="value val-green" id="dash-ot">0 mins</div></div>
+            <div class="dash-card" style="background: #e6f7ff; border-color: #91d5ff;">
+                <div class="title" style="color: #0050b3; font-weight: bold;">⚖️ Valor Neto (Extra - Atraso)</div>
+                <div class="value" id="dash-net" style="color: #0050b3;">--</div>
+            </div>
+        </div>
+    </div>
+
+    <table id="attendanceTable" style="display:none;">
+        <thead>
+            <tr>
+                <th>Fecha</th>
+                <th>Día</th>
+                <th>Horario Oficial</th>
+                <th>Registro Real</th>
+                <th>Total Horas</th>
+                <th>Estado del Sistema</th>
+                <th style="min-width: 150px;">Nota RRHH (Estado)</th>
+                <th style="min-width: 200px;">Acción Rápida</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody">
+        </tbody>
+    </table>
+
+    <div id="leaveDetailsPanel" style="display:none; margin-top: 25px; background: #fffbe6; border: 1px solid #ffe58f; padding: 15px; border-radius: 6px;">
+        <div class="dashboard-title" style="color: #856404; margin-bottom: 15px; border-bottom: 1px dashed #ffe58f; padding-bottom: 10px;">🏖️ Resumen de Permisos y Ausencias</div>
+        <div class="dashboard-grid" style="grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px;">
+            <div class="dash-card" style="background: white; border-color: #eee; padding: 10px;"><div class="title">Permiso</div><div class="value" id="dash-leave-personal" style="font-size: 18px;">0 Días</div></div>
+            <div class="dash-card" style="background: white; border-color: #eee; padding: 10px;"><div class="title">Incapacidad</div><div class="value" id="dash-leave-sick" style="font-size: 18px;">0 Días</div></div>
+            <div class="dash-card" style="background: white; border-color: #eee; padding: 10px;"><div class="title">Vacaciones</div><div class="value" id="dash-leave-holiday" style="font-size: 18px;">0 Días</div></div>
+            <div class="dash-card" style="background: white; border-color: #eee; padding: 10px;"><div class="title">Día Festivo</div><div class="value" id="dash-leave-festival" style="font-size: 18px;">0 Días</div></div>
+            <div class="dash-card" style="background: white; border-color: #eee; padding: 10px;"><div class="title">Falta</div><div class="value" id="dash-leave-absent" style="font-size: 18px;">0 Días</div></div>
+            <div class="dash-card" style="background: white; border-color: #eee; padding: 10px;"><div class="title">Otro</div><div class="value" id="dash-leave-other" style="font-size: 18px;">0 Días</div></div>
+        </div>
+    </div>
+
+</div>
+
+<div id="pdf-export-container"></div>
+
+<script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+    let employeesData = {}; 
+    let currentSelectedEmployee = "";
+    let globalMealBreakMins = 30;
+    const leaveCategories = ["Permiso", "Incapacidad", "Vacaciones", "Día Festivo", "Falta"];
+
+    let globalSchedules = {
+        'lunes': { in: "08:30", out: "17:00", name: "Lunes" },
+        'martes': { in: "08:30", out: "17:30", name: "Martes" },
+        'miércoles': { in: "08:30", out: "17:30", name: "Miércoles" },
+        'jueves': { in: "08:30", out: "17:30", name: "Jueves" },
+        'viernes': { in: "08:30", out: "17:30", name: "Viernes" },
+        'sábado': { in: "", out: "", name: "Sábado" },
+        'domingo': { in: "", out: "", name: "Domingo" }
+    };
+    let employeeSchedules = {}; 
+
+    document.getElementById('pdfFileInput').addEventListener('change', async function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('tableBody').innerHTML = '';
+        
+        const fileReader = new FileReader();
+        fileReader.onload = async function() {
+            const typedarray = new Uint8Array(this.result);
+            try {
+                const pdf = await pdfjsLib.getDocument(typedarray).promise;
+                let rawItems = [];
+
+                for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                    const page = await pdf.getPage(pageNum);
+                    const textContent = await page.getTextContent();
+                    textContent.items.forEach(item => {
+                        if(item.str.trim() !== "") {
+                            rawItems.push({ text: item.str.trim(), x: item.transform[4], y: item.transform[5], page: pageNum });
+                        }
+                    });
+                }
+                
+                employeesData = parsePDFGrid(rawItems);
+                
+                populateEmployeeDropdown();
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('controlPanel').style.display = 'flex';
+                document.getElementById('dashboardPanel').style.display = 'block';
+                document.getElementById('attendanceTable').style.display = 'table';
+                document.getElementById('leaveDetailsPanel').style.display = 'block'; 
+                document.getElementById('settingsBtn').style.display = 'block'; 
+                document.getElementById('exportBtn').style.display = 'block'; 
+                
+                const firstEmp = Object.keys(employeesData)[0];
+                if(firstEmp) {
+                    document.getElementById('empSelect').value = firstEmp;
+                    switchEmployee();
+                }
+            } catch (error) {
+                alert("Error al analizar el PDF. Por favor, revise el archivo.");
+                document.getElementById('loading').style.display = 'none';
+            }
+        };
+        fileReader.readAsArrayBuffer(file);
+    });
+
+    function parsePDFGrid(items) {
+        let parsedData = {};
+        let pages = {};
+        items.forEach(item => { if (!pages[item.page]) pages[item.page] = []; pages[item.page].push(item); });
+
+        Object.keys(pages).forEach(pageNum => {
+            let pageItems = pages[pageNum];
+            let empName = "Unknown";
+            
+            let trIndex = pageItems.findIndex(i => i.text.includes("EL TRABAJADOR"));
+            if (trIndex > 0) {
+                let rawName = pageItems[trIndex - 1].text;
+                empName = rawName.replace(/\s*\d+$/, '').trim(); 
+            }
+            if (empName === "Unknown" || empName === "") empName = "Empleado Sin Nombre (Pág " + pageNum + ")"; 
+            if (!parsedData[empName]) parsedData[empName] = [];
+
+            let dateItems = pageItems.filter(i => /^\d{2}\/\d{2}\/\d{4}$/.test(i.text));
+            let dateBlocks = [];
+            dateItems.forEach(d => {
+                let block = dateBlocks.find(b => Math.abs(b.y - d.y) < 5);
+                if (!block) { block = { y: d.y, dates: [] }; dateBlocks.push(block); }
+                block.dates.push(d);
+            });
+
+            dateBlocks.forEach(block => {
+                let Y_date = block.y;
+                let blockItems = pageItems.filter(i => i.y < Y_date - 5 && i.y > Y_date - 120);
+                let timeItems = blockItems.filter(i => /\d{2}:\d{2}-\d{2}:\d{2}/.test(i.text));
+                
+                let Y_off = timeItems.length > 0 ? timeItems.sort((a, b) => b.y - a.y)[0].y : Y_date - 30;
+                let lh = timeItems.length > 0 ? (Y_date - Y_off) / 2 : 15; 
+                let Y_day = Y_date - lh;
+                let Y_punch = Y_off - lh; 
+
+                block.dates.forEach(dateItem => {
+                    let colItems = blockItems.filter(i => Math.abs(i.x - dateItem.x) < 25);
+                    let dayItem = colItems.find(i => Math.abs(i.y - Y_day) < lh * 0.6);
+                    let punchItem = colItems.find(i => Math.abs(i.y - Y_punch) < lh * 0.6);
+                    
+                    parsedData[empName].push({
+                        date: dateItem.text,
+                        day: dayItem ? dayItem.text : "",
+                        record: punchItem ? punchItem.text.replace(/\s/g, '') : "",
+                        adjustedRecord: null,
+                        finalStatus: null,
+                        remark: ""
+                    });
+                });
+            });
+        });
+
+        Object.keys(parsedData).forEach(emp => {
+            parsedData[emp].sort((a, b) => {
+                let [d1, m1, y1] = a.date.split('/'); let [d2, m2, y2] = b.date.split('/');
+                return new Date(y1, m1-1, d1) - new Date(y2, m2-1, d2);
+            });
+        });
+
+        return parsedData;
+    }
+
+    function normalizeDay(day) {
+        let d = day.trim().toLowerCase();
+        if (d.includes('miercoles') || d.includes('miércoles')) return 'miércoles';
+        if (d.includes('sabado') || d.includes('sábado')) return 'sábado';
+        return d;
+    }
+
+    function getEffectiveSchedule(empName, dayKey) {
+        if (employeeSchedules[empName] && employeeSchedules[empName][dayKey]) return { ...employeeSchedules[empName][dayKey], isPersonal: true };
+        return { ...globalSchedules[dayKey], isPersonal: false };
+    }
+
+    function getMinutesDiff(actualTime, thresholdTime) {
+        let [h1, m1] = actualTime.split(':').map(Number);
+        let [h2, m2] = thresholdTime.split(':').map(Number);
+        return (h1 * 60 + m1) - (h2 * 60 + m2);
+    }
+
+    function formatMins(mins) {
+        const h = Math.floor(Math.abs(mins) / 60);
+        const m = Math.abs(mins) % 60;
+        return h > 0 ? `${h}h ${m}m` : `${m}m`;
+    }
+
+    function toggleSettings() {
+        const panel = document.getElementById('settingsPanel');
+        if (panel.style.display === 'none' || panel.style.display === '') {
+            panel.style.display = 'block'; document.getElementById('settingScope').value = 'global'; switchSettingScope(); 
+        } else { panel.style.display = 'none'; }
+    }
+
+    function switchSettingScope() {
+        const scope = document.getElementById('settingScope').value;
+        const grid = document.getElementById('settingsGrid');
+        grid.innerHTML = '';
+        let targetSchedule = scope === 'global' ? globalSchedules : (employeeSchedules[currentSelectedEmployee] || globalSchedules);
+
+        Object.keys(globalSchedules).forEach(day => {
+            const data = targetSchedule[day];
+            grid.innerHTML += `
+                <div class="setting-item">
+                    <strong>${globalSchedules[day].name}</strong>
+                    <input type="time" id="set-in-${day}" value="${data.in || ''}"> - <input type="time" id="set-out-${day}" value="${data.out || ''}">
+                </div>
+            `;
+        });
+    }
+
+    function saveSettings() {
+        globalMealBreakMins = parseInt(document.getElementById('mealBreakInput').value) || 0;
+        const scope = document.getElementById('settingScope').value;
+        
+        if (scope === 'global') {
+            Object.keys(globalSchedules).forEach(day => {
+                globalSchedules[day].in = document.getElementById(`set-in-${day}`).value;
+                globalSchedules[day].out = document.getElementById(`set-out-${day}`).value;
+            });
+            alert("✅ ¡Configuración global guardada! Recalculando asistencias...");
+        } else {
+            if (!employeeSchedules[currentSelectedEmployee]) employeeSchedules[currentSelectedEmployee] = {};
+            Object.keys(globalSchedules).forEach(day => {
+                employeeSchedules[currentSelectedEmployee][day] = {
+                    in: document.getElementById(`set-in-${day}`).value, out: document.getElementById(`set-out-${day}`).value
+                };
+            });
+            alert(`✅ ¡Horario personal para [${currentSelectedEmployee}] guardado!`);
+        }
+        document.getElementById('settingsPanel').style.display = 'none';
+        if(currentSelectedEmployee) renderTable(currentSelectedEmployee); 
+    }
+
+    window.switchEmployee = function() {
+        currentSelectedEmployee = document.getElementById('empSelect').value;
+        document.getElementById('currentName').innerText = currentSelectedEmployee;
+        document.querySelector('#settingScope option[value="personal"]').innerHTML = `👤 Solo Empleado Actual (${currentSelectedEmployee})`;
+        if(document.getElementById('settingsPanel').style.display === 'block') switchSettingScope();
+        renderTable(currentSelectedEmployee);
+    }
+
+    function populateEmployeeDropdown() {
+        const selectEl = document.getElementById('empSelect');
+        selectEl.innerHTML = "";
+        Object.keys(employeesData).forEach(empName => {
+            const option = document.createElement('option'); option.value = empName; option.innerText = empName;
+            selectEl.appendChild(option);
+        });
+    }
+
+    window.handleRemarkChange = function(index) {
+        const sel = document.getElementById(`rmk-sel-${index}`);
+        const txt = document.getElementById(`rmk-txt-${index}`);
+        if (sel.value === 'Otro') {
+            txt.style.display = 'block';
+            txt.focus();
+        } else {
+            txt.style.display = 'none';
+            txt.value = '';
+        }
+    }
+
+    function getActualRemark(index) {
+        const sel = document.getElementById(`rmk-sel-${index}`);
+        if (!sel) return "";
+        if (sel.value === "Otro") return document.getElementById(`rmk-txt-${index}`).value.trim();
+        return sel.value;
+    }
+
+    function calculateEmployeeData(empName) {
+        const records = employeesData[empName];
+        let dashNormal = 0, dashMissing = 0, sumLateMins = 0, sumOTMins = 0;
+        let leaveCounts = { 'Permiso': 0, 'Incapacidad': 0, 'Vacaciones': 0, 'Día Festivo': 0, 'Falta': 0, 'Otro': 0 };
+        
+        let processedRows = [];
+
+        records.forEach((data, index) => {
+            const dayKey = normalizeDay(data.day);
+            const schedule = getEffectiveSchedule(empName, dayKey);
+            const isRestDay = !schedule.in || !schedule.out;
+            let effRecord = data.adjustedRecord || data.record;
+            
+            let workedMins = 0, dailyLate = 0, dailyOT = 0, reqMins = 0;
+            if (!isRestDay) reqMins = getMinutesDiff(schedule.out, schedule.in);
+
+            if (effRecord && effRecord.includes("-")) {
+                const [inT, outT] = effRecord.split("-").map(t => t.trim());
+                workedMins = getMinutesDiff(outT, inT) - globalMealBreakMins; 
+                if (workedMins < 0) workedMins = 0;
+
+                if (!isRestDay) {
+                    let [sH, sM] = schedule.in.split(':').map(Number);
+                    sM += 10; if(sM >= 60) { sH++; sM -= 60; }
+                    let threshT = `${sH.toString().padStart(2,'0')}:${sM.toString().padStart(2,'0')}`;
+                    if (inT > threshT) dailyLate = getMinutesDiff(inT, threshT);
+                    if (workedMins > reqMins) dailyOT = workedMins - reqMins;
+                } else {
+                    dailyOT = workedMins; 
+                }
+            }
+
+            let sysCode = "NORMAL", sysText = "Normal";
+            if (isRestDay) { 
+                sysCode = "WEEKEND"; 
+                sysText = dailyOT > 0 ? `Descanso (Ext ${dailyOT}m)` : "Día de Descanso"; 
+            }
+            else if (!effRecord) { sysCode = "EMPTY"; sysText = "Sin Registro"; }
+            else if (!effRecord.includes("-")) { sysCode = "PARTIAL"; sysText = "Falta Marcaje"; }
+            else {
+                let texts = [];
+                if (dailyLate > 0) { sysCode = "LATE"; texts.push(`Atraso (${dailyLate}m)`); }
+                if (dailyOT > 0) { 
+                    if (sysCode === "NORMAL") sysCode = "OVERTIME"; 
+                    texts.push(`Extra (${dailyOT}m)`); 
+                }
+                if (texts.length > 0) {
+                    sysText = texts.join(' | ');
+                } else {
+                    sysText = "Normal";
+                }
+            }
+
+            let finalCode = data.finalStatus || sysCode;
+            
+            if (finalCode === 'NORMAL' && data.finalStatus) dailyLate = 0; 
+            if (finalCode === 'EXCEPTION' && data.finalStatus) {
+                workedMins = 0;
+                dailyLate = 0;
+                dailyOT = 0;
+            }
+
+            let matchedLeave = false;
+            if (data.remark) {
+                if (leaveCategories.includes(data.remark)) {
+                    leaveCounts[data.remark]++;
+                    matchedLeave = true;
+                } else if (data.remark.trim() !== "") {
+                    leaveCounts['Otro']++;
+                    matchedLeave = true;
+                }
+            }
+
+            if (finalCode === 'NORMAL' || finalCode === 'OVERTIME' || (finalCode === 'LATE' && !data.finalStatus) || (finalCode === 'WEEKEND' && effRecord)) {
+                if (effRecord) dashNormal++; 
+                sumLateMins += dailyLate; sumOTMins += dailyOT;
+            } else if (finalCode === 'EXCEPTION') {
+                if (!matchedLeave) dashMissing++; 
+            } else if (sysCode === 'EMPTY' || sysCode === 'PARTIAL') {
+                if (!matchedLeave) dashMissing++;
+            }
+
+            processedRows.push({
+                index, data, isRestDay, schedule, effRecord, workedMins, reqMins, 
+                sysCode, sysText, finalCode, needsAction: (!data.finalStatus && (sysCode === 'EMPTY' || sysCode === 'PARTIAL' || sysCode === 'LATE'))
+            });
+        });
+
+        let netMins = sumOTMins - sumLateMins;
+
+        return { rows: processedRows, dashNormal, dashMissing, leaveCounts, sumLateMins, sumOTMins, netMins };
+    }
+
+    function renderTable(empName) {
+        const result = calculateEmployeeData(empName);
+        const tbody = document.getElementById('tableBody');
+        tbody.innerHTML = '';
+
+        result.rows.forEach(r => {
+            const { index, data, isRestDay, schedule, effRecord, workedMins, reqMins, sysCode, sysText, finalCode, needsAction } = r;
+
+            let textHtml = "", rowClass = "";
+            if (finalCode === 'NORMAL' && data.finalStatus) textHtml = `<span class="status-normal">✅ Aprobado Normal</span>`;
+            else if (finalCode === 'EXCEPTION' && data.finalStatus) textHtml = `<span class="status-late">❌ Anomalía Confirmada</span>`;
+            else {
+                if (sysCode === 'LATE' || sysCode === 'PARTIAL' || sysCode === 'EMPTY') textHtml = `<span class="status-late">${sysText}</span>`;
+                else if (sysCode === 'NORMAL' || sysCode === 'OVERTIME') textHtml = `<span class="status-normal">${sysText}</span>`;
+                else {
+                    textHtml = `<span class="text-exception">${sysText}</span>`;
+                    rowClass = sysCode === 'WEEKEND' ? 'status-weekend' : 'status-exception';
+                }
+            }
+
+            const officialTimeHTML = isRestDay ? `<span class='empty-cell-text'>Descanso</span>` : `${schedule.in}-${schedule.out} ${schedule.isPersonal ? '<span class="personal-badge">Personal</span>' : ''}`;
+            let isHoursMet = isRestDay ? (workedMins > 0) : (workedMins >= reqMins);
+            
+            let hoursHtml = `<span class="empty-cell-text">-</span>`;
+            if (finalCode === 'EXCEPTION' && data.finalStatus) {
+                hoursHtml = `<span style="color:#d9534f; font-weight:bold; text-decoration: line-through;">0h 0m</span> <span style="font-size:10px;color:#d9534f">(Deducido)</span>`;
+            } else if (effRecord && effRecord.includes("-")) {
+                hoursHtml = `<span class="${isHoursMet ? 'status-normal' : 'status-late'}">${Math.floor(workedMins/60)}h ${workedMins%60}m</span>`;
+            }
+            
+            let recordHtml = data.adjustedRecord ? `<strong>${data.adjustedRecord}</strong> <span style="color:green;font-size:12px;">(Modificado)</span>` : `<strong>${data.record || "(Vacío)"}</strong>`;
+            
+            let selValue = "", txtValue = "";
+            if (data.remark) {
+                if (leaveCategories.includes(data.remark)) selValue = data.remark;
+                else { selValue = "Otro"; txtValue = data.remark; }
+            }
+
+            let remarkHtml = `
+                <select id="rmk-sel-${index}" class="remark-select" onchange="handleRemarkChange(${index})">
+                    <option value="">- Seleccione Estado -</option>
+                    <option value="Permiso" ${selValue==='Permiso'?'selected':''}>Permiso</option>
+                    <option value="Incapacidad" ${selValue==='Incapacidad'?'selected':''}>Incapacidad</option>
+                    <option value="Vacaciones" ${selValue==='Vacaciones'?'selected':''}>Vacaciones</option>
+                    <option value="Día Festivo" ${selValue==='Día Festivo'?'selected':''}>Día Festivo</option>
+                    <option value="Falta" ${selValue==='Falta'?'selected':''}>Falta</option>
+                    <option value="Otro" ${selValue==='Otro'?'selected':''}>Otro (Especifique)</option>
+                </select>
+                <input type="text" id="rmk-txt-${index}" class="remark-input" placeholder="Ingrese el motivo..." value="${txtValue}" style="display: ${selValue==='Otro'?'block':'none'}; width: 100%; box-sizing: border-box;">
+            `;
+
+            let actionHtml = "";
+            let isComplete = effRecord && effRecord.includes("-");
+            let isPartial = effRecord && !effRecord.includes("-");
+            
+            let hasModified = data.finalStatus || data.adjustedRecord || data.remark;
+            let resetBtnHtml = hasModified ? `<button class="btn btn-warning" style="margin-top:4px;" onclick="resetRow(${index})">🔄 Deshacer</button>` : "";
+
+            if (!data.finalStatus) {
+                if (isComplete) {
+                    actionHtml = `<div style="margin-bottom:5px;"><button class="btn btn-blue" onclick="saveRemarkOnly(${index})">💾 Guardar Estado</button></div>` + resetBtnHtml;
+                } else if (isPartial) {
+                    let t = effRecord.replace(/[^\d:]/g, '');
+                    let hour = t ? parseInt(t.split(':')[0], 10) : 0;
+                    if (hour < 12) {
+                        actionHtml = `<div style="margin-bottom:5px;"><span>${t}</span> - <input type="time" id="out-${index}"><button class="btn btn-blue" onclick="savePartialPunch(${index}, '${t}', 'in')">💾 Corregir</button></div>`;
+                    } else {
+                        actionHtml = `<div style="margin-bottom:5px;"><input type="time" id="in-${index}"> - <span>${t}</span><button class="btn btn-blue" onclick="savePartialPunch(${index}, '${t}', 'out')">💾 Corregir</button></div>`;
+                    }
+                    actionHtml += `<div><button class="btn btn-green" onclick="confirmStatus(${index}, 'NORMAL')">✅ Normal</button> <button class="btn btn-red" onclick="confirmStatus(${index}, 'EXCEPTION')">❌ Anomalía</button></div>` + resetBtnHtml;
+                } else {
+                    actionHtml = `<div style="margin-bottom:5px;"><input type="time" id="in-${index}">-<input type="time" id="out-${index}"><button class="btn btn-blue" onclick="savePunch(${index})">💾 Completar</button></div>`;
+                    actionHtml += `<div><button class="btn btn-green" onclick="confirmStatus(${index}, 'NORMAL')">✅ Normal</button> <button class="btn btn-red" onclick="confirmStatus(${index}, 'EXCEPTION')">❌ Anomalía</button></div>` + resetBtnHtml;
+                }
+            } else {
+                actionHtml = `<div class="empty-cell-text" style="margin-bottom:5px;">Procesado</div>` + resetBtnHtml;
+            }
+
+            const tr = document.createElement('tr');
+            if (rowClass && !data.finalStatus) tr.className = rowClass;
+            tr.innerHTML = `<td>${data.date}</td><td>${data.day}</td><td class="official-time">${officialTimeHTML}</td><td>${recordHtml}</td><td>${hoursHtml}</td><td>${textHtml}</td><td>${remarkHtml}</td><td>${actionHtml}</td>`;
+            tbody.appendChild(tr);
+        });
+
+        document.getElementById('dash-normal').innerText = `${result.dashNormal} Días`;
+        document.getElementById('dash-missing').innerText = `${result.dashMissing} Días`;
+        document.getElementById('dash-late').innerText = formatMins(result.sumLateMins);
+        document.getElementById('dash-ot').innerText = formatMins(result.sumOTMins);
+        
+        document.getElementById('dash-leave-personal').innerText = `${result.leaveCounts['Permiso']} Días`;
+        document.getElementById('dash-leave-sick').innerText = `${result.leaveCounts['Incapacidad']} Días`;
+        document.getElementById('dash-leave-holiday').innerText = `${result.leaveCounts['Vacaciones']} Días`;
+        document.getElementById('dash-leave-festival').innerText = `${result.leaveCounts['Día Festivo']} Días`;
+        document.getElementById('dash-leave-absent').innerText = `${result.leaveCounts['Falta']} Días`;
+        document.getElementById('dash-leave-other').innerText = `${result.leaveCounts['Otro']} Días`;
+
+        let netEl = document.getElementById('dash-net');
+        if (result.netMins > 0) netEl.innerHTML = `Saldo a favor <strong class="val-green">${formatMins(result.netMins)}</strong>`;
+        else if (result.netMins < 0) netEl.innerHTML = `Horas a deber <strong class="val-red">${formatMins(Math.abs(result.netMins))}</strong>`;
+        else netEl.innerHTML = `<span style="color:#666">Compensado (0 mins)</span>`;
+    }
+
+    window.printAllReports = function() {
+        const loadingOverlay = document.createElement('div');
+        loadingOverlay.style.cssText = 'position:fixed; top:20px; left:50%; transform:translateX(-50%); background:#007bff; color:white; padding:15px 30px; border-radius:8px; font-size:16px; font-weight:bold; z-index:10000; box-shadow:0 4px 10px rgba(0,0,0,0.2);';
+        loadingOverlay.innerText = '⏳ Generando reporte de impresión, por favor espere...';
+        document.body.appendChild(loadingOverlay);
+
+        const exportBox = document.getElementById('pdf-export-container');
+        exportBox.innerHTML = ''; 
+
+        const empNames = Object.keys(employeesData);
+
+        for (let i = 0; i < empNames.length; i++) {
+            const empName = empNames[i];
+            const result = calculateEmployeeData(empName);
+            
+            let empDiv = document.createElement('div');
+            empDiv.style.fontFamily = 'sans-serif';
+            empDiv.style.color = '#333';
+            if (i < empNames.length - 1) {
+                empDiv.className = 'page-break'; 
+            }
+
+            let netHtml = result.netMins > 0 ? `<span style="color:#5cb85c;font-weight:bold;">A favor ${formatMins(result.netMins)}</span>` : 
+                          result.netMins < 0 ? `<span style="color:#d9534f;font-weight:bold;">A deber ${formatMins(Math.abs(result.netMins))}</span>` : 
+                          `<span style="color:#666;font-weight:bold;">Compensado</span>`;
+
+            let headerHTML = `
+                <h2 style="border-bottom:2px solid #ddd; padding-bottom:8px; margin-top:0;">👤 Reporte de Asistencia: <span style="color:#0050b3">${empName}</span></h2>
+                <div style="display:flex; justify-content:space-between; margin-bottom:15px; background:#fafafa; padding:10px; border:1px solid #eee; border-radius:6px; font-size:13px;">
+                    <div>✅ Asistencia: <strong style="color:#5cb85c">${result.dashNormal} d</strong></div>
+                    <div>⚠️ Anomalía: <strong style="color:#d9534f">${result.dashMissing} d</strong></div>
+                    <div>⏳ Atrasos: <strong style="color:#d9534f">${formatMins(result.sumLateMins)}</strong></div>
+                    <div>💪 Extras: <strong style="color:#5cb85c">${formatMins(result.sumOTMins)}</strong></div>
+                    <div>⚖️ Neto: ${netHtml}</div>
+                </div>
+                <table style="width:100%; border-collapse:collapse; font-size:11px; text-align:center;">
+                    <thead>
+                        <tr style="background-color:#f0f2f5;">
+                            <th style="border:1px solid #ddd; padding:6px;">Fecha</th>
+                            <th style="border:1px solid #ddd; padding:6px;">Día</th>
+                            <th style="border:1px solid #ddd; padding:6px;">Horario Oficial</th>
+                            <th style="border:1px solid #ddd; padding:6px;">Registro Real</th>
+                            <th style="border:1px solid #ddd; padding:6px;">Total Horas</th>
+                            <th style="border:1px solid #ddd; padding:6px;">Estado del Sistema</th>
+                            <th style="border:1px solid #ddd; padding:6px;">Nota RRHH</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            let rowsHTML = result.rows.map(r => {
+                const { data, isRestDay, schedule, effRecord, workedMins, reqMins, sysCode, sysText, finalCode } = r;
+
+                let textHtml = "", bgStyle = "";
+                if (finalCode === 'NORMAL' && data.finalStatus) textHtml = `<span style="color:#5cb85c;font-weight:bold;">✅ Aprobado Normal</span>`;
+                else if (finalCode === 'EXCEPTION' && data.finalStatus) textHtml = `<span style="color:#d9534f;font-weight:bold;">❌ Anomalía</span>`;
+                else {
+                    if (sysCode === 'LATE' || sysCode === 'PARTIAL' || sysCode === 'EMPTY') textHtml = `<span style="color:#d9534f;font-weight:bold;">${sysText}</span>`;
+                    else if (sysCode === 'NORMAL' || sysCode === 'OVERTIME') textHtml = `<span style="color:#5cb85c;font-weight:bold;">${sysText}</span>`;
+                    else {
+                        textHtml = `<span style="color:#856404;font-weight:bold;">${sysText}</span>`;
+                        bgStyle = sysCode === 'WEEKEND' ? "background-color:#f8d7da;" : "background-color:#fff3cd;";
+                    }
+                }
+
+                const offHtml = isRestDay ? `<span style='color:#aaa'>Descanso</span>` : `${schedule.in}-${schedule.out}`;
+                let isHoursMet = isRestDay ? (workedMins > 0) : (workedMins >= reqMins);
+                
+                let hoursHtml = `<span style="color:#aaa">-</span>`;
+                if (finalCode === 'EXCEPTION' && data.finalStatus) {
+                    hoursHtml = `<span style="color:#d9534f; font-weight:bold; text-decoration: line-through;">Deducido a 0</span>`;
+                } else if (effRecord && effRecord.includes("-")) {
+                    hoursHtml = `<span style="color:${isHoursMet ? '#5cb85c' : '#d9534f'}; font-weight:bold;">${Math.floor(workedMins/60)}h ${workedMins%60}m</span>`;
+                }
+                
+                let recHtml = data.adjustedRecord ? `<strong>${data.adjustedRecord}</strong> <span style="color:green;font-size:10px;">(Modificado)</span>` : `<strong>${data.record || ""}</strong>`;
+                let rmkHtml = data.remark || `<span style="color:#aaa">-</span>`;
+
+                return `<tr style="${bgStyle}">
+                    <td style="border:1px solid #ddd; padding:5px;">${data.date}</td>
+                    <td style="border:1px solid #ddd; padding:5px;">${data.day}</td>
+                    <td style="border:1px solid #ddd; padding:5px; background:#fafafa; color:#555;">${offHtml}</td>
+                    <td style="border:1px solid #ddd; padding:5px;">${recHtml}</td>
+                    <td style="border:1px solid #ddd; padding:5px;">${hoursHtml}</td>
+                    <td style="border:1px solid #ddd; padding:5px;">${textHtml}</td>
+                    <td style="border:1px solid #ddd; padding:5px;">${rmkHtml}</td>
+                </tr>`;
+            }).join('');
+
+            let leaveSummaryHTML = `
+                <div style="display:flex; justify-content:space-between; margin-top:15px; background:#fffbe6; padding:10px; border:1px solid #ffe58f; border-radius:6px; font-size:13px;">
+                    <div style="color:#856404; font-weight:bold;">🏖️ Total de Ausencias:</div>
+                    <div>Permiso: <strong>${result.leaveCounts['Permiso']} d</strong></div>
+                    <div>Incapacidad: <strong>${result.leaveCounts['Incapacidad']} d</strong></div>
+                    <div>Vacaciones: <strong>${result.leaveCounts['Vacaciones']} d</strong></div>
+                    <div>Día Festivo: <strong>${result.leaveCounts['Día Festivo']} d</strong></div>
+                    <div>Falta: <strong>${result.leaveCounts['Falta']} d</strong></div>
+                    <div>Otro: <strong>${result.leaveCounts['Otro']} d</strong></div>
+                </div>
+            `;
+
+            empDiv.innerHTML = headerHTML + rowsHTML + `</tbody></table>` + leaveSummaryHTML;
+            exportBox.appendChild(empDiv);
+        }
+
+        setTimeout(() => {
+            loadingOverlay.remove();
+            window.print();
+        }, 500);
+    }
+
+    window.resetRow = function(index) {
+        if(confirm("¿Está seguro de deshacer todas las modificaciones y restaurar el registro original?")) {
+            employeesData[currentSelectedEmployee][index].finalStatus = null;
+            employeesData[currentSelectedEmployee][index].adjustedRecord = null;
+            employeesData[currentSelectedEmployee][index].remark = "";
+            renderTable(currentSelectedEmployee);
+        }
+    }
+
+    window.saveRemarkOnly = function(index) {
+        const remark = getActualRemark(index);
+        if (document.getElementById(`rmk-sel-${index}`).value === "Otro" && !remark) { alert("¡Por favor, ingrese el motivo en el cuadro de texto!"); return; }
+        employeesData[currentSelectedEmployee][index].remark = remark;
+        alert("📝 ¡Estado/Nota guardado con éxito!");
+        renderTable(currentSelectedEmployee);
+    }
+
+    window.confirmStatus = function(index, finalDecision) {
+        const remark = getActualRemark(index);
+        if (finalDecision === 'EXCEPTION' && !remark) { alert("Al confirmar la anomalía y deducir horas, ¡debe seleccionar un estado o especificar un motivo!"); return; }
+        if (document.getElementById(`rmk-sel-${index}`).value === "Otro" && !remark) { alert("¡Por favor, ingrese el motivo en el cuadro de texto!"); return; }
+        
+        employeesData[currentSelectedEmployee][index].finalStatus = finalDecision;
+        employeesData[currentSelectedEmployee][index].remark = remark;
+        renderTable(currentSelectedEmployee); 
+    }
+
+    window.savePartialPunch = function(index, existingTime, type) {
+        const inputVal = document.getElementById(type === 'in' ? `out-${index}` : `in-${index}`).value;
+        if(!inputVal) { alert("¡Por favor, ingrese el horario a completar!"); return; }
+        
+        let inT = type === 'in' ? existingTime : inputVal;
+        let outT = type === 'in' ? inputVal : existingTime;
+        
+        employeesData[currentSelectedEmployee][index].adjustedRecord = `${inT}-${outT}`;
+        employeesData[currentSelectedEmployee][index].finalStatus = null; 
+        const remark = getActualRemark(index);
+        if (remark) employeesData[currentSelectedEmployee][index].remark = remark;
+        
+        renderTable(currentSelectedEmployee);
+    }
+
+    window.savePunch = function(index) {
+        const inT = document.getElementById(`in-${index}`).value;
+        const outT = document.getElementById(`out-${index}`).value;
+        if(!inT || !outT) { alert("¡Por favor, ingrese ambos horarios (entrada y salida)!"); return; }
+
+        employeesData[currentSelectedEmployee][index].adjustedRecord = `${inT}-${outT}`;
+        employeesData[currentSelectedEmployee][index].finalStatus = null; 
+        
+        const remark = getActualRemark(index);
+        if (remark) employeesData[currentSelectedEmployee][index].remark = remark;
+        
+        renderTable(currentSelectedEmployee); 
+    }
+</script>
+</body>
+</html>
