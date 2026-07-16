@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Cálculo de Asistencia y Nómina v6.4</title>
+    <title>Sistema de Cálculo de Asistencia y Nómina v6.5</title>
     <!-- Biblioteca para analizar PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     
@@ -477,8 +477,21 @@
                 dailyOT = 0;
             }
 
+            // --- NUEVA LÓGICA PARA DÍA FESTIVO ---
+            if (data.remark === "Día Festivo") {
+                dailyLate = 0;      // Anula atrasos
+                dailyEarly = 0;     // Anula salidas anticipadas
+                dailyOT = 0;        // Anula horas extra
+                workedMins = 0;     // Fuerza el contador a 0h 0m
+            }
+
             let sysCode = "NORMAL", sysText = "Normal";
-            if (isRestDay) { 
+            
+            if (data.remark === "Día Festivo") {
+                sysCode = "NORMAL"; // Esto evita que pida "Completar" o "Corregir"
+                sysText = "Festivo (Asistencia Automática)";
+            }
+            else if (isRestDay) { 
                 sysCode = "WEEKEND"; 
                 sysText = dailyOT > 0 ? `Descanso (Ext ${dailyOT}m)` : "Día de Descanso"; 
             }
@@ -531,7 +544,7 @@
             }
 
             if (finalCode === 'NORMAL' || finalCode === 'OVERTIME' || (finalCode === 'LATE' && !data.finalStatus) || (finalCode === 'WEEKEND' && effRecord)) {
-                if (effRecord) dashNormal++; 
+                if (effRecord || data.remark === "Día Festivo") dashNormal++; 
                 sumLateMins += (dailyLate + dailyEarly); 
                 sumOTMins += dailyOT;
             } else if (sysCode === 'EMPTY' || sysCode === 'PARTIAL') {
@@ -585,6 +598,9 @@
                 } else {
                     hoursHtml = `<span style="color:#856404; font-weight:bold;">0h 0m</span> <span style="font-size:10px;color:#856404">(Exento)</span>`;
                 }
+            } else if (data.remark === "Día Festivo") {
+                // --- Muestra visualmente las 0h 0m indicando que está pagado ---
+                hoursHtml = `<span style="color:#5cb85c; font-weight:bold;">0h 0m</span> <span style="font-size:10px;color:#5cb85c">(Pagado)</span>`;
             } else if (effRecord && effRecord.includes("-")) {
                 hoursHtml = `<span class="${isHoursMet ? 'status-normal' : 'status-late'}">${Math.floor(workedMins/60)}h ${workedMins%60}m</span>`;
             }
@@ -740,6 +756,9 @@
                     } else {
                         hoursHtml = `<span style="color:#856404; font-weight:bold;">0h 0m</span> <span style="font-size:10px;color:#856404">(Exento)</span>`;
                     }
+                } else if (data.remark === "Día Festivo") {
+                    // --- Iguala el formato para el reporte de impresión ---
+                    hoursHtml = `<span style="color:#5cb85c; font-weight:bold;">0h 0m</span> <span style="font-size:10px;color:#5cb85c">(Pagado)</span>`;
                 } else if (effRecord && effRecord.includes("-")) {
                     hoursHtml = `<span style="color:${isHoursMet ? '#5cb85c' : '#d9534f'}; font-weight:bold;">${Math.floor(workedMins/60)}h ${workedMins%60}m</span>`;
                 }
