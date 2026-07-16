@@ -3,10 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Cálculo de Asistencia y Nómina v6.2</title>
-    <!-- Biblioteca para analizar PDF -->
+    <title>Sistema de Cálculo de Asistencia y Nómina v6.3</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-    <!-- Biblioteca para exportar a PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     
     <style>
@@ -78,7 +76,7 @@
 
 <div class="container">
     <h1>
-        <span>Sistema de Cálculo de Asistencia y Nómina v6.2</span>
+        <span>Sistema de Cálculo de Asistencia y Nómina v6.3</span>
         <div>
             <button class="btn btn-warning" onclick="toggleSettings()" id="settingsBtn" style="display:none; font-size: 14px; padding: 8px 15px;">⚙️ Configuración de Horarios</button>
             <button class="btn btn-export" onclick="printAllReports()" id="exportBtn" style="display:none;">🖨️ Imprimir Reportes (Vertical)</button>
@@ -135,10 +133,7 @@
         <div class="dashboard-title">📊 Resumen Mensual de Asistencia (Cálculo Inteligente)</div>
         <div class="dashboard-grid">
             <div class="dash-card"><div class="title">✅ Días Asistidos</div><div class="value val-green" id="dash-normal">0 Días</div></div>
-            
-            <!-- Cambio 1: Horas Totales en la parte superior -->
             <div class="dash-card"><div class="title">⏱️ Horas Totales</div><div class="value" style="color: #0050b3;" id="dash-total-hours">0h 0m</div></div>
-            
             <div class="dash-card"><div class="title">⏳ Atraso Acumulado</div><div class="value val-red" id="dash-late">0 mins</div></div>
             <div class="dash-card"><div class="title">💪 Horas Extras</div><div class="value val-green" id="dash-ot">0 mins</div></div>
             <div class="dash-card" style="background: #e6f7ff; border-color: #91d5ff;">
@@ -170,12 +165,10 @@
         <div class="dashboard-grid" style="grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px;">
             <div class="dash-card" style="background: white; border-color: #eee; padding: 10px;"><div class="title">Permiso</div><div class="value" id="dash-leave-personal" style="font-size: 18px;">0 Días</div></div>
             <div class="dash-card" style="background: white; border-color: #eee; padding: 10px;"><div class="title">Incapacidad</div><div class="value" id="dash-leave-sick" style="font-size: 18px;">0 Días</div></div>
-            <div class="dash-card" style="background: white; border-color: #eee; padding: 10px;"><div class="title">Vacaciones/Festivo</div><div class="value" id="dash-leave-holiday" style="font-size: 18px;">0 Días</div></div>
+            <div class="dash-card" style="background: white; border-color: #eee; padding: 10px;"><div class="title">Vacaciones</div><div class="value" id="dash-leave-vacation" style="font-size: 18px;">0 Días</div></div>
+            <div class="dash-card" style="background: white; border-color: #eee; padding: 10px;"><div class="title">Día Festivo</div><div class="value" id="dash-leave-festival" style="font-size: 18px;">0 Días</div></div>
             <div class="dash-card" style="background: white; border-color: #eee; padding: 10px;"><div class="title">Falta</div><div class="value" id="dash-leave-absent" style="font-size: 18px;">0 Días</div></div>
-            
-            <!-- Cambio 2: Días de Atraso movido a la parte inferior y resaltado en rojo -->
             <div class="dash-card" style="background: #fff5f5; border-color: #ffccc7; padding: 10px;"><div class="title" style="color: #d9534f;">Días de Atraso</div><div class="value" id="dash-bottom-late-days" style="font-size: 18px; color: #d9534f;">0 Días</div></div>
-            
             <div class="dash-card" style="background: white; border-color: #eee; padding: 10px;"><div class="title">Otras Anomalías</div><div class="value" id="dash-leave-other" style="font-size: 18px;">0 Días</div></div>
         </div>
     </div>
@@ -192,7 +185,7 @@
     let globalMealBreakMins = 30;
     let weekendNoBreak = true; 
     
-    // Mantenemos "Imprevisto" para el menú desplegable (para anular atrasos)
+    // Categorías actualizadas
     const leaveCategories = ["Permiso", "Incapacidad", "Vacaciones", "Día Festivo", "Falta", "Imprevisto"];
 
     let globalSchedules = {
@@ -441,7 +434,12 @@
             let currentMealDeduction = (isWeekend && weekendNoBreak) ? 0 : globalMealBreakMins;
 
             let workedMins = 0, dailyLate = 0, dailyOT = 0, reqMins = 0, dailyPenalty = 0;
-            if (!isRestDay) reqMins = getMinutesDiff(schedule.out, schedule.in);
+            
+            // CORE FIX: Deduct meal break from required minutes
+            if (!isRestDay) {
+                reqMins = getMinutesDiff(schedule.out, schedule.in) - currentMealDeduction;
+                if (reqMins < 0) reqMins = 0;
+            }
 
             if (effRecord && effRecord.includes("-")) {
                 const [inT, outT] = effRecord.split("-").map(t => t.trim());
@@ -452,19 +450,26 @@
                     let [sH, sM] = schedule.in.split(':').map(Number);
                     sM += 10; if(sM >= 60) { sH++; sM -= 60; }
                     let threshT = `${sH.toString().padStart(2,'0')}:${sM.toString().padStart(2,'0')}`;
+                    
                     if (inT > threshT) dailyLate = getMinutesDiff(inT, threshT);
                     
-                    // Si el total de horas trabajadas compensa el atraso, se anula el atraso
+                    // Lógica: Si el total de horas trabajadas compensa el atraso, se anula la penalización
                     if (workedMins >= reqMins) {
                         dailyOT = workedMins - reqMins;
                         dailyLate = 0; 
+                    } else {
+                        // Si hay déficit, pero salió más tarde de su horario oficial, se descuenta el atraso
+                        let endExtra = getMinutesDiff(outT, schedule.out);
+                        if (endExtra > 0 && dailyLate > 0) {
+                            dailyLate = Math.max(0, dailyLate - endExtra);
+                        }
                     }
                 } else {
                     dailyOT = workedMins; 
                 }
             }
 
-            // Etiqueta Imprevisto anula el atraso
+            // Etiqueta Imprevisto anula el atraso completamente
             if (data.remark === "Imprevisto") {
                 dailyLate = 0;
             }
@@ -499,9 +504,7 @@
                 dailyOT = 0;
                 
                 if (data.remark === "Permiso" || data.remark === "Falta") {
-                    let expectedMins = reqMins - currentMealDeduction;
-                    if (expectedMins < 0) expectedMins = 0;
-                    dailyPenalty = expectedMins;
+                    dailyPenalty = reqMins;
                     sumPenaltyMins += dailyPenalty;
                 }
             }
@@ -524,12 +527,10 @@
                 if (!matchedLeave) leaveCounts['Otro']++;
             }
 
-            // Calculando días de atraso
             if (dailyLate > 0) {
                 dashLateDays++;
             }
 
-            // Acumulando horas totales trabajadas en el mes
             sumWorkedMins += workedMins;
 
             processedRows.push({
@@ -577,7 +578,7 @@
                 hoursHtml = `<span class="${isHoursMet ? 'status-normal' : 'status-late'}">${Math.floor(workedMins/60)}h ${workedMins%60}m</span>`;
             }
             
-            let recordHtml = data.adjustedRecord ? `<strong>${data.adjustedRecord}</strong> <span style="color:green;font-size:12px;">(Modificado)</span>` : `<strong>${data.record || "(Vacío)"}</strong>`;
+            let recordHtml = data.adjustedRecord ? `<strong>${data.adjustedRecord}</strong> <span style="color:green;font-size:12px;">(Mod)</span>` : `<strong>${data.record || "(Vacío)"}</strong>`;
             
             let selValue = "", txtValue = "";
             if (data.remark) {
@@ -633,8 +634,6 @@
         });
 
         document.getElementById('dash-normal').innerText = `${result.dashNormal} Días`;
-        
-        // Actualizando el panel con Horas Totales
         document.getElementById('dash-total-hours').innerText = formatMins(result.sumWorkedMins);
         
         document.getElementById('dash-late').innerText = formatMins(result.sumLateMins);
@@ -642,12 +641,11 @@
         
         document.getElementById('dash-leave-personal').innerText = `${result.leaveCounts['Permiso']} Días`;
         document.getElementById('dash-leave-sick').innerText = `${result.leaveCounts['Incapacidad']} Días`;
-        document.getElementById('dash-leave-holiday').innerText = `${result.leaveCounts['Vacaciones'] + result.leaveCounts['Día Festivo']} Días`;
+        document.getElementById('dash-leave-vacation').innerText = `${result.leaveCounts['Vacaciones']} Días`;
+        document.getElementById('dash-leave-festival').innerText = `${result.leaveCounts['Día Festivo']} Días`;
         document.getElementById('dash-leave-absent').innerText = `${result.leaveCounts['Falta']} Días`;
         
-        // Actualizando el Días de Atraso en la parte inferior (resaltado en rojo)
         document.getElementById('dash-bottom-late-days').innerText = `${result.dashLateDays} Días`;
-        
         document.getElementById('dash-leave-other').innerText = `${result.leaveCounts['Otro']} Días`;
 
         let netEl = document.getElementById('dash-net');
@@ -754,10 +752,10 @@
                     <div style="color:#856404; font-weight:bold;">🏖️ Detalles de Ausencias:</div>
                     <div>Permiso: <strong>${result.leaveCounts['Permiso']} d</strong></div>
                     <div>Incapacidad: <strong>${result.leaveCounts['Incapacidad']} d</strong></div>
-                    <div>Vacaciones/Festivo: <strong>${result.leaveCounts['Vacaciones'] + result.leaveCounts['Día Festivo']} d</strong></div>
-                    <div>Días de Atraso: <strong style="color:#d9534f">${result.dashLateDays} d</strong></div>
+                    <div>Vacaciones: <strong>${result.leaveCounts['Vacaciones']} d</strong></div>
+                    <div>Día Festivo: <strong>${result.leaveCounts['Día Festivo']} d</strong></div>
                     <div>Falta: <strong>${result.leaveCounts['Falta']} d</strong></div>
-                    <div>Otro: <strong>${result.leaveCounts['Otro']} d</strong></div>
+                    <div>Días de Atraso: <strong style="color:#d9534f">${result.dashLateDays} d</strong></div>
                 </div>
             `;
 
