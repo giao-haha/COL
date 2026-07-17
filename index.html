@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Cálculo de Asistencia y Nómina v6.5</title>
+    <title>Sistema de Cálculo de Asistencia y Nómina v7.2</title>
     <!-- Biblioteca para analizar PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <!-- NUEVO: Biblioteca para analizar Excel (.xls, .xlsx) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; background-color: #f5f7fa; color: #333; }
@@ -76,7 +78,7 @@
 
 <div class="container">
     <h1>
-        <span>Sistema de Cálculo de Asistencia y Nómina v6.5</span>
+        <span>Sistema de Cálculo de Asistencia y Nómina v7.2</span>
         <div>
             <button class="btn btn-warning" onclick="toggleSettings()" id="settingsBtn" style="display:none; font-size: 14px; padding: 8px 15px;">⚙️ Configuración de Horarios</button>
             <button class="btn btn-export" onclick="printAllReports()" id="exportBtn" style="display:none;">🖨️ Imprimir Reportes (Vertical)</button>
@@ -114,9 +116,9 @@
     </div>
 
     <div class="upload-section">
-        <p>Por favor, seleccione el archivo PDF exportado del reloj checador</p>
-        <input type="file" id="pdfFileInput" accept="application/pdf" />
-        <div id="loading">Extrayendo datos y procesando coordenadas, por favor espere...</div>
+        <p>Por favor, seleccione el archivo exportado del reloj checador <strong>(Soporta PDF, XLS y XLSX)</strong></p>
+        <input type="file" id="fileInput" accept=".pdf, .xls, .xlsx" />
+        <div id="loading">Extrayendo datos y procesando formato, por favor espere...</div>
     </div>
 
     <div class="control-panel" id="controlPanel">
@@ -185,13 +187,12 @@
     let globalMealBreakMins = 30;
     let weekendNoBreak = true; 
     
-    // Categorías actualizadas con la opción Exento explícita
     const leaveCategories = ["Permiso", "Incapacidad", "Vacaciones", "Día Festivo", "Falta", "Exento"];
 
     let globalSchedules = {
         'lunes': { in: "08:30", out: "17:00", name: "Lunes" },
         'martes': { in: "08:30", out: "17:30", name: "Martes" },
-        'miércoles': { in: "08:30", out: "17:30", name: "Miércoles" },
+        'miércoles': { in: "08:30", out: "17:30", name: "Miércoles" }, // 正确的拼写
         'jueves': { in: "08:30", out: "17:30", name: "Jueves" },
         'viernes': { in: "08:30", out: "17:30", name: "Viernes" },
         'sábado': { in: "", out: "", name: "Sábado" },
@@ -199,54 +200,188 @@
     };
     let employeeSchedules = {}; 
 
-    document.getElementById('pdfFileInput').addEventListener('change', async function(e) {
+    // NUEVO: Escuchador de archivo compatible con PDF y Excel
+    document.getElementById('fileInput').addEventListener('change', async function(e) {
         const file = e.target.files[0];
         if (!file) return;
 
         document.getElementById('loading').style.display = 'block';
         document.getElementById('tableBody').innerHTML = '';
         
-        const fileReader = new FileReader();
-        fileReader.onload = async function() {
-            const typedarray = new Uint8Array(this.result);
-            try {
-                const pdf = await pdfjsLib.getDocument(typedarray).promise;
-                let rawItems = [];
+        const fileName = file.name.toLowerCase();
 
-                for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-                    const page = await pdf.getPage(pageNum);
-                    const textContent = await page.getTextContent();
-                    textContent.items.forEach(item => {
-                        if(item.str.trim() !== "") {
-                            rawItems.push({ text: item.str.trim(), x: item.transform[4], y: item.transform[5], page: pageNum });
-                        }
-                    });
+        // Si es un Excel (XLS / XLSX)
+        if (fileName.endsWith('.xls') || fileName.endsWith('.xlsx')) {
+            const fileReader = new FileReader();
+            fileReader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const jsonSheet = XLSX.utils.sheet_to_json(worksheet, {header: 1}); 
+                    
+                    employeesData = parseExcelGrid(jsonSheet);
+                    finishDataLoading();
+                } catch (error) {
+                    alert("Error al analizar el archivo Excel. Por favor, asegúrese de que el formato sea correcto.");
+                    console.error(error);
+                    document.getElementById('loading').style.display = 'none';
                 }
-                
-                employeesData = parsePDFGrid(rawItems);
-                
-                populateEmployeeDropdown();
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('controlPanel').style.display = 'flex';
-                document.getElementById('dashboardPanel').style.display = 'block';
-                document.getElementById('attendanceTable').style.display = 'table';
-                document.getElementById('leaveDetailsPanel').style.display = 'block'; 
-                document.getElementById('settingsBtn').style.display = 'block'; 
-                document.getElementById('exportBtn').style.display = 'block'; 
-                
-                const firstEmp = Object.keys(employeesData)[0];
-                if(firstEmp) {
-                    document.getElementById('empSelect').value = firstEmp;
-                    switchEmployee();
+            };
+            fileReader.readAsArrayBuffer(file);
+        } 
+        // Si es un PDF
+        else if (fileName.endsWith('.pdf')) {
+            const fileReader = new FileReader();
+            fileReader.onload = async function() {
+                const typedarray = new Uint8Array(this.result);
+                try {
+                    const pdf = await pdfjsLib.getDocument(typedarray).promise;
+                    let rawItems = [];
+
+                    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                        const page = await pdf.getPage(pageNum);
+                        const textContent = await page.getTextContent();
+                        textContent.items.forEach(item => {
+                            if(item.str.trim() !== "") {
+                                rawItems.push({ text: item.str.trim(), x: item.transform[4], y: item.transform[5], page: pageNum });
+                            }
+                        });
+                    }
+                    
+                    employeesData = parsePDFGrid(rawItems);
+                    finishDataLoading();
+                } catch (error) {
+                    alert("Error al analizar el PDF. Por favor, revise el archivo.");
+                    console.error(error);
+                    document.getElementById('loading').style.display = 'none';
                 }
-            } catch (error) {
-                alert("Error al analizar el PDF. Por favor, revise el archivo.");
-                document.getElementById('loading').style.display = 'none';
-            }
-        };
-        fileReader.readAsArrayBuffer(file);
+            };
+            fileReader.readAsArrayBuffer(file);
+        } else {
+            alert("Por favor, suba un archivo PDF o Excel válido.");
+            document.getElementById('loading').style.display = 'none';
+        }
     });
 
+    function finishDataLoading() {
+        populateEmployeeDropdown();
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('controlPanel').style.display = 'flex';
+        document.getElementById('dashboardPanel').style.display = 'block';
+        document.getElementById('attendanceTable').style.display = 'table';
+        document.getElementById('leaveDetailsPanel').style.display = 'block'; 
+        document.getElementById('settingsBtn').style.display = 'block'; 
+        document.getElementById('exportBtn').style.display = 'block'; 
+        
+        const firstEmp = Object.keys(employeesData)[0];
+        if(firstEmp) {
+            document.getElementById('empSelect').value = firstEmp;
+            switchEmployee();
+        }
+    }
+
+    // NUEVO: Función para parsear el archivo Excel
+    function parseExcelGrid(sheetData) {
+        let parsedData = {};
+        const diasSemana = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+        
+        let year = new Date().getFullYear();
+        let month = new Date().getMonth() + 1;
+        let daysRowIndex = -1;
+
+        // 1. Buscar la fecha del reporte y la fila de los días
+        for (let i = 0; i < Math.min(20, sheetData.length); i++) {
+            let row = sheetData[i];
+            if (!row) continue;
+            
+            for (let j = 0; j < row.length; j++) {
+                if (typeof row[j] === 'string' && row[j].includes('~') && row[j].match(/(\d{4})-(\d{2})/)) {
+                    let match = row[j].match(/(\d{4})-(\d{2})/);
+                    if (match) {
+                        year = parseInt(match[1]);
+                        month = parseInt(match[2]);
+                    }
+                }
+            }
+            
+            // Si la fila empieza con "1" y luego "2", es la fila de los días del mes
+            if (row[0] == 1 && row[1] == 2) {
+                daysRowIndex = i;
+            }
+        }
+
+        if (daysRowIndex === -1) {
+            alert("No se pudo identificar la estructura de días en el Excel.");
+            return parsedData;
+        }
+
+        let daysRow = sheetData[daysRowIndex];
+
+        // Función interna para formatear "08:3017:10" -> "08:30-17:10"
+        function formatExcelPunch(text) {
+            if (!text) return "";
+            text = text.toString().trim().replace(/\s/g, '');
+            if (text.length === 5) return text; 
+            if (text.length >= 10) {
+                let inTime = text.substring(0, 5);
+                let outTime = text.substring(text.length - 5);
+                return `${inTime}-${outTime}`;
+            }
+            return text;
+        }
+
+        // 2. Recorrer las filas y buscar a los empleados
+        for (let i = 0; i < sheetData.length; i++) {
+            let row = sheetData[i];
+            if (!row) continue;
+            
+            if (row[0] === "ID:") {
+                let empName = "Empleado Sin Nombre";
+                
+                // Buscar dónde dice "Nombre:" para capturar el valor de la celda que le sigue
+                let nombreIdx = row.findIndex(val => typeof val === 'string' && val.trim() === "Nombre:");
+                if (nombreIdx !== -1) {
+                    if (row[nombreIdx + 2]) {
+                        empName = row[nombreIdx + 2].toString().trim();
+                    } else if (row[nombreIdx + 1]) {
+                        empName = row[nombreIdx + 1].toString().trim();
+                    }
+                }
+
+                if (!parsedData[empName]) parsedData[empName] = [];
+                
+                let punchRow = sheetData[i + 1];
+                if (punchRow) {
+                    for (let c = 0; c < daysRow.length; c++) {
+                        let dayNum = parseInt(daysRow[c]);
+                        if (!isNaN(dayNum)) {
+                            let rawPunch = punchRow[c];
+                            let formattedPunch = formatExcelPunch(rawPunch);
+                            
+                            let d = new Date(year, month - 1, dayNum);
+                            let dayName = diasSemana[d.getDay()];
+                            let dateStr = `${dayNum.toString().padStart(2, '0')}/${month.toString().padStart(2, '0')}/${year}`;
+                            
+                            parsedData[empName].push({
+                                date: dateStr,
+                                day: dayName,
+                                record: formattedPunch,
+                                adjustedRecord: null,
+                                finalStatus: null,
+                                remark: ""
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        return parsedData;
+    }
+
+    // Función original adaptada para los PDFs
     function parsePDFGrid(items) {
         let parsedData = {};
         let pages = {};
@@ -254,14 +389,58 @@
 
         Object.keys(pages).forEach(pageNum => {
             let pageItems = pages[pageNum];
-            let empName = "Unknown";
             
-            let trIndex = pageItems.findIndex(i => i.text.includes("EL TRABAJADOR"));
+            let empName = "Unknown";
+            let textSequence = pageItems.map(i => i.text.trim()).filter(t => t !== "");
+
+            let trIndex = textSequence.findIndex(t => t.toUpperCase().includes("EL TRABAJADOR"));
             if (trIndex > 0) {
-                let rawName = pageItems[trIndex - 1].text;
-                empName = rawName.replace(/\s*\d+$/, '').trim(); 
+                empName = textSequence[trIndex - 1].replace(/\s*\d+$/, '').trim(); 
             }
+
+            if (empName === "Unknown" || empName === "") {
+                let joinedText = textSequence.join("|||");
+                let match = joinedText.match(/FECHA\s*\/\s*HORA:.*?\|\|\|(.*?)\|\|\|P[ÁA]GINA/i);
+                
+                if (match && match[1]) {
+                    empName = match[1].replace(/\s*\d+$/, '').trim();
+                } else {
+                    let pIndex = textSequence.findIndex(t => t.toUpperCase().startsWith("PÁGINA") || t.toUpperCase().startsWith("PAGINA"));
+                    if (pIndex > 0) {
+                        let possibleName = textSequence[pIndex - 1];
+                        if (!possibleName.toUpperCase().includes("FECHA")) {
+                            empName = possibleName.replace(/\s*\d+$/, '').trim();
+                        } else if (pIndex > 2) {
+                            empName = textSequence[pIndex - 2].replace(/\s*\d+$/, '').trim();
+                        }
+                    }
+                }
+            }
+
+            if (empName === "Unknown" || empName === "") {
+                const nameKeywords = ["NOMBRE:", "EMPLEADO:", "TRABAJADOR:", "COLABORADOR:"];
+                for (let i = 0; i < textSequence.length; i++) {
+                    let text = textSequence[i].toUpperCase();
+                    let foundKeyword = nameKeywords.find(k => text.includes(k));
+                    
+                    if (foundKeyword) {
+                        let matchIndex = text.indexOf(foundKeyword);
+                        let possibleName = textSequence[i].substring(matchIndex + foundKeyword.length).trim();
+                        
+                        if (possibleName === "" && i + 1 < textSequence.length) {
+                            possibleName = textSequence[i + 1].trim();
+                        }
+                        
+                        if (possibleName !== "") {
+                            empName = possibleName.replace(/\s*\d+$/, '').trim();
+                            break;
+                        }
+                    }
+                }
+            }
+
             if (empName === "Unknown" || empName === "") empName = "Empleado Sin Nombre (Pág " + pageNum + ")"; 
+
             if (!parsedData[empName]) parsedData[empName] = [];
 
             let dateItems = pageItems.filter(i => /^\d{2}\/\d{2}\/\d{4}$/.test(i.text));
@@ -310,10 +489,21 @@
     }
 
     function normalizeDay(day) {
-        let d = day.trim().toLowerCase();
-        if (d.includes('miercoles') || d.includes('miércoles')) return 'miércoles';
-        if (d.includes('sabado') || d.includes('sábado')) return 'sábado';
-        return d;
+        if (!day) return "";
+        
+        // 核心修复：转小写 -> 剥离所有重音符号 -> 删除所有非字母的隐藏特殊字符
+        let d = day.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z]/g, "");
+        
+        // 只要包含了这几个核心字母，无论原本怎么拼错，都强制纠正为标准格式
+        if (d.includes('lun')) return 'lunes';
+        if (d.includes('mar')) return 'martes';
+        if (d.includes('mier')) return 'miércoles';
+        if (d.includes('jue')) return 'jueves';
+        if (d.includes('vie')) return 'viernes';
+        if (d.includes('sab')) return 'sábado';
+        if (d.includes('dom')) return 'domingo';
+        
+        return day.trim().toLowerCase();
     }
 
     function getEffectiveSchedule(empName, dayKey) {
@@ -471,24 +661,22 @@
                 }
             }
 
-            // 【CORE FIX】: Etiqueta Exento anula el atraso de llegada y las horas extra, PERO MANTIENE la Salida Anticipada.
             if (data.remark === "Exento" || data.remark === "Imprevisto") {
                 dailyLate = 0;
                 dailyOT = 0;
             }
 
-            // --- NUEVA LÓGICA PARA DÍA FESTIVO ---
             if (data.remark === "Día Festivo") {
-                dailyLate = 0;      // Anula atrasos
-                dailyEarly = 0;     // Anula salidas anticipadas
-                dailyOT = 0;        // Anula horas extra
-                workedMins = 0;     // Fuerza el contador a 0h 0m
+                dailyLate = 0;      
+                dailyEarly = 0;     
+                dailyOT = 0;        
+                workedMins = 0;     
             }
 
             let sysCode = "NORMAL", sysText = "Normal";
             
             if (data.remark === "Día Festivo") {
-                sysCode = "NORMAL"; // Esto evita que pida "Completar" o "Corregir"
+                sysCode = "NORMAL"; 
                 sysText = "Festivo (Asistencia Automática)";
             }
             else if (isRestDay) { 
@@ -599,7 +787,6 @@
                     hoursHtml = `<span style="color:#856404; font-weight:bold;">0h 0m</span> <span style="font-size:10px;color:#856404">(Exento)</span>`;
                 }
             } else if (data.remark === "Día Festivo") {
-                // --- Muestra visualmente las 0h 0m indicando que está pagado ---
                 hoursHtml = `<span style="color:#5cb85c; font-weight:bold;">0h 0m</span> <span style="font-size:10px;color:#5cb85c">(Pagado)</span>`;
             } else if (effRecord && effRecord.includes("-")) {
                 hoursHtml = `<span class="${isHoursMet ? 'status-normal' : 'status-late'}">${Math.floor(workedMins/60)}h ${workedMins%60}m</span>`;
@@ -757,7 +944,6 @@
                         hoursHtml = `<span style="color:#856404; font-weight:bold;">0h 0m</span> <span style="font-size:10px;color:#856404">(Exento)</span>`;
                     }
                 } else if (data.remark === "Día Festivo") {
-                    // --- Iguala el formato para el reporte de impresión ---
                     hoursHtml = `<span style="color:#5cb85c; font-weight:bold;">0h 0m</span> <span style="font-size:10px;color:#5cb85c">(Pagado)</span>`;
                 } else if (effRecord && effRecord.includes("-")) {
                     hoursHtml = `<span style="color:${isHoursMet ? '#5cb85c' : '#d9534f'}; font-weight:bold;">${Math.floor(workedMins/60)}h ${workedMins%60}m</span>`;
