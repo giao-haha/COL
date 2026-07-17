@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Cálculo de Asistencia y Nómina v7.2</title>
+    <title>Sistema de Cálculo de Asistencia y Nómina v7.3</title>
     <!-- Biblioteca para analizar PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <!-- NUEVO: Biblioteca para analizar Excel (.xls, .xlsx) -->
@@ -78,7 +78,7 @@
 
 <div class="container">
     <h1>
-        <span>Sistema de Cálculo de Asistencia y Nómina v7.2</span>
+        <span>Sistema de Cálculo de Asistencia y Nómina v7.3</span>
         <div>
             <button class="btn btn-warning" onclick="toggleSettings()" id="settingsBtn" style="display:none; font-size: 14px; padding: 8px 15px;">⚙️ Configuración de Horarios</button>
             <button class="btn btn-export" onclick="printAllReports()" id="exportBtn" style="display:none;">🖨️ Imprimir Reportes (Vertical)</button>
@@ -321,15 +321,18 @@
 
         // Función interna para formatear "08:3017:10" -> "08:30-17:10"
         function formatExcelPunch(text) {
-            if (!text) return "";
-            text = text.toString().trim().replace(/\s/g, '');
-            if (text.length === 5) return text; 
-            if (text.length >= 10) {
-                let inTime = text.substring(0, 5);
-                let outTime = text.substring(text.length - 5);
-                return `${inTime}-${outTime}`;
-            }
-            return text;
+        if (!text) return "";
+        text = text.toString().trim().replace(/\s/g, '');
+    
+        // 自动提取所有 "08:30" 或 "8:30" 格式的时间
+        let matches = text.match(/\d{1,2}:\d{2}/g);
+        if (matches && matches.length > 0) {
+        // 如果只有一个打卡记录，直接返回
+            if (matches.length === 1) return matches[0];
+        // 如果有多个打卡记录，永远取第一个（上班）和最后一个（下班），忽略中间的重复打卡
+            return `${matches[0]}-${matches[matches.length - 1]}`;
+        }
+        return text;
         }
 
         // 2. Recorrer las filas y buscar a los empleados
