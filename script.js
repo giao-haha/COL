@@ -881,9 +881,9 @@ const UPSTASH_TOKEN = "gQAAAAAAAZKkAAIgcDJkNWVjMzc2ZDYwZjk0M2E1OWU5YmI3ZjMyNTU0Z
 
 // 1. 生成 5 位随机提取码
 function generateSyncCode() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; 
+    const chars = '1234567890'; 
     let code = '';
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 4; i++) {
         code += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     return code;
