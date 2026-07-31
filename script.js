@@ -872,16 +872,16 @@ window.savePunch = function(index) {
 }
 
 // ==========================================
-// ☁️ MÓDULO DE SINCRONIZACIÓN EN LA NUBE ☁️
+// ☁️ MÓDULO DE SINCRONIZACIÓN EN LA NUBE (UPSTASH)
 // ==========================================
 
-// Usamos KVDB.io para una prueba rápida (puedes crear tu propio bucket gratis en https://kvdb.io)
-// ¡Importante! Este es un bucket de prueba público. 
-const CLOUD_KV_BUCKET = "https://kvdb.io/T8b9N1dG6Vv5QvXQ3n3wQG"; 
+// ⚠️ 将这里替换为你自己在 Upstash 获取的 URL 和 Token
+const UPSTASH_URL = "https://becoming-walleye-103076.upstash.io"; 
+const UPSTASH_TOKEN = "gQAAAAAAAZKkAAIgcDJkNWVjMzc2ZDYwZjk0M2E1OWU5YmI3ZjMyNTU0ZDNjOA";
 
-// 1. 生成 5 位随机大写字母+数字的提取码
+// 1. 生成 5 位随机提取码
 function generateSyncCode() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Se excluyen I, 1, O, 0 para evitar confusiones
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; 
     let code = '';
     for (let i = 0; i < 5; i++) {
         code += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -889,7 +889,7 @@ function generateSyncCode() {
     return code;
 }
 
-// 2. 将本地数据打包上传到云端
+// 2. 将本地数据上传到 Upstash 云端
 async function uploadToCloud() {
     const data = localStorage.getItem('asistenciaSystemData');
     if (!data) {
@@ -903,12 +903,18 @@ async function uploadToCloud() {
     loadingEl.innerText = '☁️ Subiendo a la nube de forma segura...';
 
     try {
-        const response = await fetch(`${CLOUD_KV_BUCKET}/${code}`, {
-            method: 'PUT',
+        // Upstash 的 SET 指令，通过 REST API 直接写入数据
+        const response = await fetch(`${UPSTASH_URL}/set/${code}`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${UPSTASH_TOKEN}`
+            },
             body: data
         });
 
-        if (response.ok) {
+        const json = await response.json();
+
+        if (json.result === "OK") {
             alert(`✅ ¡Respaldo exitoso!\n\n🔑 Tu código de extracción es: 【 ${code} 】\n\nGuarda este código para descargar tus datos en otra computadora.`);
         } else {
             alert("❌ Error al guardar en la nube.");
@@ -921,7 +927,7 @@ async function uploadToCloud() {
     }
 }
 
-// 3. 通过 5位代码 从云端拉取数据
+// 3. 通过 5位代码 从 Upstash 拉取数据
 async function downloadFromCloud() {
     let code = prompt("📥 Ingresa el código de 5 caracteres para importar tus datos:");
     if (!code) return;
@@ -938,18 +944,22 @@ async function downloadFromCloud() {
     loadingEl.innerText = '📥 Descargando y sincronizando datos...';
 
     try {
-        const response = await fetch(`${CLOUD_KV_BUCKET}/${code}`);
-        if (response.ok) {
-            const data = await response.text();
-            if (data) {
-                localStorage.setItem('asistenciaSystemData', data);
-                alert("✅ ¡Datos importados con éxito! La página se recargará para aplicar los cambios.");
-                location.reload();
+        // Upstash 的 GET 指令，通过 REST API 读取数据
+        const response = await fetch(`${UPSTASH_URL}/get/${code}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${UPSTASH_TOKEN}`
             }
-        } else if (response.status === 404) {
-            alert("❌ Código inválido o expirado (No se encontró el respaldo).");
+        });
+        
+        const json = await response.json();
+
+        if (json.result) {
+            localStorage.setItem('asistenciaSystemData', json.result);
+            alert("✅ ¡Datos importados con éxito! La página se recargará para aplicar los cambios.");
+            location.reload();
         } else {
-            alert("❌ Error al descargar los datos.");
+            alert("❌ Código inválido o expirado (No se encontró el respaldo).");
         }
     } catch (error) {
         console.error("Error de red:", error);
