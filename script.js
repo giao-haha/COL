@@ -881,11 +881,15 @@ const UPSTASH_TOKEN = "gQAAAAAAAZKkAAIgcDJkNWVjMzc2ZDYwZjk0M2E1OWU5YmI3ZjMyNTU0Z
 
 // 1. 生成 5 位随机提取码
 function generateSyncCode() {
-    const chars = '1234567890'; 
-    let code = '';
-    for (let i = 0; i < 5; i++) {
-        code += chars.charAt(Math.floor(Math.random() * chars.length));
+    const first = '123456789';
+    const rest = '0123456789';
+
+    let code = first.charAt(Math.floor(Math.random() * first.length));
+
+    for (let i = 0; i < 4; i++) {
+        code += rest.charAt(Math.floor(Math.random() * rest.length));
     }
+
     return code;
 }
 
@@ -932,7 +936,7 @@ async function downloadFromCloud() {
     let code = prompt("📥 Ingresa el código de 5 caracteres para importar tus datos:");
     if (!code) return;
     
-    code = code.trim().toUpperCase();
+    code = code.trim();
 
     if (code.length !== 5) {
         alert("⚠️ El código debe tener exactamente 5 caracteres.");
