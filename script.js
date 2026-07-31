@@ -883,7 +883,7 @@ const UPSTASH_TOKEN = "gQAAAAAAAZKkAAIgcDJkNWVjMzc2ZDYwZjk0M2E1OWU5YmI3ZjMyNTU0Z
 function generateSyncCode() {
     const chars = '1234567890'; 
     let code = '';
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 5; i++) {
         code += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     return code;
