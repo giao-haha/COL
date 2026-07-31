@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Cálculo de Asistencia y Nómina v8.5</title>
+    <title>Sistema de Cálculo de Asistencia y Nómina v8.6-T</title>
     
     <!-- Bibliotecas externas -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
@@ -19,8 +19,11 @@
 
 <div class="container">
     <h1>
-        <span>☁️ Sistema de Cálculo de Asistencia y Nómina v8.5</span>
+        <span>☁️ Sistema de Cálculo de Asistencia y Nómina v8.6-T</span>
         <div style="display: flex; gap: 10px;">
+            <button class="btn btn-blue" onclick="uploadToCloud()" style="background-color: #0ea5e9;">☁️ Respaldar (Nube)</button>
+            <button class="btn btn-green" onclick="downloadFromCloud()">📥 Importar (Nube)</button>
+            
             <button class="btn btn-red" onclick="clearLocalData()" id="clearBtn">🗑️ Borrar</button>
             <button class="btn btn-warning" onclick="toggleSettings()" id="settingsBtn" style="display:none;">⚙️ Configuración</button>
             <button class="btn btn-export" onclick="printAllReports()" id="exportBtn" style="display:none;">🖨️ Imprimir</button>
