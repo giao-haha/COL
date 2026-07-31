@@ -870,3 +870,91 @@ window.savePunch = function(index) {
     if (remark) employeesData[currentSelectedEmployee][index].remark = remark;
     renderTable(currentSelectedEmployee); saveToLocalStorage();
 }
+
+// ==========================================
+// ☁️ MÓDULO DE SINCRONIZACIÓN EN LA NUBE ☁️
+// ==========================================
+
+// Usamos KVDB.io para una prueba rápida (puedes crear tu propio bucket gratis en https://kvdb.io)
+// ¡Importante! Este es un bucket de prueba público. 
+const CLOUD_KV_BUCKET = "https://kvdb.io/T8b9N1dG6Vv5QvXQ3n3wQG"; 
+
+// 1. 生成 5 位随机大写字母+数字的提取码
+function generateSyncCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Se excluyen I, 1, O, 0 para evitar confusiones
+    let code = '';
+    for (let i = 0; i < 5; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+}
+
+// 2. 将本地数据打包上传到云端
+async function uploadToCloud() {
+    const data = localStorage.getItem('asistenciaSystemData');
+    if (!data) {
+        alert("⚠️ No hay datos locales para respaldar.");
+        return;
+    }
+
+    const code = generateSyncCode();
+    const loadingEl = document.getElementById('loading');
+    loadingEl.style.display = 'block';
+    loadingEl.innerText = '☁️ Subiendo a la nube de forma segura...';
+
+    try {
+        const response = await fetch(`${CLOUD_KV_BUCKET}/${code}`, {
+            method: 'PUT',
+            body: data
+        });
+
+        if (response.ok) {
+            alert(`✅ ¡Respaldo exitoso!\n\n🔑 Tu código de extracción es: 【 ${code} 】\n\nGuarda este código para descargar tus datos en otra computadora.`);
+        } else {
+            alert("❌ Error al guardar en la nube.");
+        }
+    } catch (error) {
+        console.error("Error de red:", error);
+        alert("❌ Error de conexión al servidor en la nube.");
+    } finally {
+        loadingEl.style.display = 'none';
+    }
+}
+
+// 3. 通过 5位代码 从云端拉取数据
+async function downloadFromCloud() {
+    let code = prompt("📥 Ingresa el código de 5 caracteres para importar tus datos:");
+    if (!code) return;
+    
+    code = code.trim().toUpperCase();
+
+    if (code.length !== 5) {
+        alert("⚠️ El código debe tener exactamente 5 caracteres.");
+        return;
+    }
+
+    const loadingEl = document.getElementById('loading');
+    loadingEl.style.display = 'block';
+    loadingEl.innerText = '📥 Descargando y sincronizando datos...';
+
+    try {
+        const response = await fetch(`${CLOUD_KV_BUCKET}/${code}`);
+        if (response.ok) {
+            const data = await response.text();
+            if (data) {
+                localStorage.setItem('asistenciaSystemData', data);
+                alert("✅ ¡Datos importados con éxito! La página se recargará para aplicar los cambios.");
+                location.reload();
+            }
+        } else if (response.status === 404) {
+            alert("❌ Código inválido o expirado (No se encontró el respaldo).");
+        } else {
+            alert("❌ Error al descargar los datos.");
+        }
+    } catch (error) {
+        console.error("Error de red:", error);
+        alert("❌ Error de conexión al servidor en la nube.");
+    } finally {
+        loadingEl.style.display = 'none';
+    }
+}
