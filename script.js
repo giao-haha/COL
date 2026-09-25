@@ -1038,7 +1038,7 @@ window.sendBugReport = async function() {
         timestamp: new Date().toISOString()
     });
 
-    console.log("準備發送 Bug Report:", reportData);
+    console.log("Pending Bug Report:", reportData);
 
     try {
         // 使用 Upstash Redis REST API 儲存錯誤報告
@@ -1081,7 +1081,7 @@ function populateLeaderboard() {
     leaderboardData.sort((a, b) => b.lateMins - a.lateMins);
 
     if (leaderboardData.length === 0) {
-        listEl.innerHTML = '<div style="padding: 15px; text-align: center; color: #10b981; font-size: 13px;">🎉 太棒了！沒有任何人遲到</div>';
+        listEl.innerHTML = '<div style="padding: 15px; text-align: center; color: #10b981; font-size: 13px;">Waiting For Data</div>';
         return;
     }
 
