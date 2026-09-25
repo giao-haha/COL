@@ -1033,7 +1033,6 @@ window.sendBugReport = async function() {
     // 準備要寫入資料庫的資料
     const reportData = JSON.stringify({
         id: reportId,
-        employee: currentSelectedEmployee || "Unknown",
         description: bugDesc,
         timestamp: new Date().toISOString()
     });
