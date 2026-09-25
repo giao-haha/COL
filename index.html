@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Cálculo de Asistencia y Nómina v8.7</title>
+    <title>Sistema de Cálculo de Asistencia y Nómina v8.8</title>
     
     <!-- Bibliotecas externas -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
@@ -19,7 +19,7 @@
 
 <div class="container">
     <h1>
-        <span>☁️ Sistema de Cálculo de Asistencia y Nómina v8.7</span>
+        <span>☁️ Sistema de Cálculo de Asistencia y Nómina v8.8</span>
         <div style="display: flex; gap: 10px;">
             <button class="btn btn-blue" onclick="uploadToCloud()" style="background-color: #0ea5e9;">☁️ Respaldar (Nube)</button>
             <button class="btn btn-green" onclick="downloadFromCloud()">📥 Importar (Nube)</button>
@@ -28,6 +28,56 @@
             <button class="btn btn-warning" onclick="toggleSettings()" id="settingsBtn" style="display:none;">⚙️ Configuración</button>
             <button class="btn btn-export" onclick="printAllReports()" id="exportBtn" style="display:none;">🖨️ Imprimir</button>
         </div>
+        <!-- 多視圖工具選單容器 -->
+<div class="dropdown-container" id="multiDropdownContainer">
+    <!-- 觸發按鈕 -->
+    <button class="btn btn-dark-outline" onclick="toggleMultiDropdown(event)" type="button">
+        <div class="btn-text">🛠️ Herramientas</div>
+        <div class="btn-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 9l4 -4l4 4"></path>
+                <path d="M16 15l-4 4l-4 -4"></path>
+            </svg>
+        </div>
+    </button>
+    
+    <!-- 彈出選單 -->
+    <div class="dropdown-menu" id="multiMenu">
+        
+        <!-- ================= 第一頁：Main (工具選項) ================= -->
+        <div id="dropdown-view-main">
+            <div class="dropdown-list" style="padding: 8px;">
+                <!-- 選項 1: 遲到排行榜 -->
+                <div class="dropdown-item" onclick="switchDropdownView('leaderboard')">
+                    <span class="emp-name">🏆 Ver tabla de clasificación de retrasos</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </div>
+                
+                <!-- 選項 2: Bug Report -->
+                <div class="dropdown-item" onclick="sendBugReport()">
+                    <span class="emp-name">🐛 Enviar informe de error</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= 第二頁：遲到排行榜 ================= -->
+        <div id="dropdown-view-leaderboard" style="display: none;">
+            <div class="dropdown-header view-title-header">
+                <button class="icon-back-btn" onclick="switchDropdownView('main')" title="返回選項">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                </button>
+                <div class="view-title">🏆 遲到排行榜</div>
+            </div>
+            <div class="dropdown-list" id="leaderboardList">
+                <!-- 由 JS 動態填入排行榜 -->
+            </div>
+        </div>
+
+    </div>
+</div>
+
+    </div>
+</div>
     </h1>
 
     <!-- Panel de Configuración -->

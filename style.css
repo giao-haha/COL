@@ -47,12 +47,15 @@ body {
     padding: 24px;
 }
 
+/* 優化頂部控制列，防止小螢幕擠壓變形 */
 h1 { 
     font-size: 20px; 
     margin: 0;
     display: flex; 
     justify-content: space-between; 
     align-items: center; 
+    flex-wrap: wrap; /* 允許標題與按鈕群組在空間不足時換行 */
+    gap: 16px; /* 換行或並排時的安全間距 */
     background: var(--bg-surface);
     padding: 16px 24px;
     border-radius: var(--radius-lg);
@@ -60,8 +63,23 @@ h1 {
     border: 1px solid var(--border-light);
 }
 
-h1 span { font-weight: 700; letter-spacing: -0.02em; color: #0f172a; }
+h1 span { 
+    font-weight: 700; 
+    letter-spacing: -0.02em; 
+    color: #0f172a; 
+}
 
+/* 針對 h1 內部的按鈕容器 */
+h1 > div {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap; /* 允許按鈕群組內部自動換行 */
+}
+
+/* 確保所有按鈕不會被 flex 容器強行縮小變形 */
+.btn, .btn-dark-outline {
+    flex-shrink: 0; 
+}
 .upload-section { 
     background: #f8fafc; border: 2px dashed #cbd5e1; text-align: center; 
     padding: 40px 20px; border-radius: var(--radius-lg); transition: all 0.3s ease;
@@ -194,4 +212,68 @@ select.remark-select { width: 100%; margin-bottom: 8px; cursor: pointer; }
     #pdf-export-container { display: block !important; width: 100% !important; margin: 0; padding: 0; }
     .page-break { page-break-after: always; } 
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+}
+
+/* ================= 多視圖下拉選單樣式 ================= */
+.dropdown-container { position: relative; display: inline-block; }
+
+.btn-dark-outline {
+    background-color: #27272a; color: white; border: none;
+    display: flex; align-items: center; padding: 0 8px 0 12px;
+    height: 36px; border-radius: var(--radius-md); transition: 0.2s;
+}
+.btn-dark-outline:hover { background-color: #3f3f46; }
+.btn-dark-outline .btn-text { margin-right: 8px; font-size: 14px; font-weight: 500; }
+.btn-dark-outline .btn-icon { color: #a1a1aa; display: flex; }
+
+.dropdown-menu {
+    display: none; position: absolute; top: calc(100% + 8px); right: 0;
+    width: 260px; background-color: var(--bg-surface);
+    border: 1px solid var(--border-light); border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md); z-index: 1000; overflow: hidden;
+}
+.dropdown-menu.show { display: block; animation: fadeIn 0.15s ease-out; }
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.dropdown-header { padding: 10px; position: relative; border-bottom: 1px solid var(--border-light); }
+.dropdown-header input {
+    width: 100%; box-sizing: border-box; padding: 6px 10px 6px 30px;
+    border-radius: 6px; border: 1px solid transparent; outline: none;
+    font-size: 14px; background-color: #f8fafc; transition: 0.2s;
+}
+.dropdown-header input:focus { border-color: #cbd5e1; background-color: #fff; box-shadow: 0 0 0 2px rgba(226, 232, 240, 0.5); }
+
+.view-title-header { display: flex; align-items: center; padding: 12px 10px; }
+.icon-back-btn { 
+    background: none; border: none; cursor: pointer; color: var(--text-muted); 
+    display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 4px;
+}
+.icon-back-btn:hover { background-color: #f1f5f9; color: var(--text-main); }
+.view-title { font-weight: 600; font-size: 14px; margin-left: 8px; color: var(--text-main); }
+
+.dropdown-list { max-height: 240px; overflow-y: auto; padding: 6px; }
+
+.dropdown-item {
+    padding: 8px 12px; display: flex; justify-content: space-between; align-items: center;
+    cursor: pointer; font-size: 14px; color: var(--text-main); border-radius: 6px; margin-bottom: 2px;
+}
+.dropdown-item:hover { background-color: #f1f5f9; }
+.dropdown-item.active { background-color: #ecfdf5; color: #065f46; } /* 圖片中的綠色選中狀態 */
+.dropdown-item .emp-name { display: flex; align-items: center; gap: 8px; }
+.dropdown-item .late-time { font-weight: 600; color: var(--danger); font-size: 12px; }
+
+/* 底部切換按鈕 (模仿 Create Team 樣式) */
+.dropdown-action-row {
+    padding: 10px 15px; border-top: 1px solid var(--border-light);
+    cursor: pointer; display: flex; align-items: center;
+    font-size: 14px; color: var(--text-main); transition: 0.2s;
+}
+.dropdown-action-row:hover { background-color: #f8fafc; }
+.dropdown-action-row .action-icon {
+    background-color: #f1f5f9; border-radius: 50%; width: 24px; height: 24px;
+    display: flex; align-items: center; justify-content: center; margin-right: 12px; font-size: 12px;
 }

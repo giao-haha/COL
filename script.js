@@ -875,7 +875,6 @@ window.savePunch = function(index) {
 // ☁️ MÓDULO DE SINCRONIZACIÓN EN LA NUBE (UPSTASH)
 // ==========================================
 
-// ⚠️ 将这里替换为你自己在 Upstash 获取的 URL 和 Token
 const UPSTASH_URL = "https://becoming-walleye-103076.upstash.io"; 
 const UPSTASH_TOKEN = "gQAAAAAAAZKkAAIgcDJkNWVjMzc2ZDYwZjk0M2E1OWU5YmI3ZjMyNTU0ZDNjOA";
 
@@ -971,4 +970,138 @@ async function downloadFromCloud() {
     } finally {
         loadingEl.style.display = 'none';
     }
+}
+
+// ================= 多視圖下拉選單與工具邏輯 =================
+
+// 1. 切換顯示/隱藏下拉選單
+window.toggleMultiDropdown = function(event) {
+    if (event) event.stopPropagation();
+
+    const menu = document.getElementById('multiMenu');
+    if (!menu) return;
+
+    const isShowing = menu.classList.contains('show');
+    
+    if (isShowing) {
+        menu.classList.remove('show');
+    } else {
+        switchDropdownView('main'); // 每次打開預設顯示工具列表
+        menu.classList.add('show');
+    }
+}
+
+// 2. 點擊選單外部自動關閉
+document.addEventListener('click', function(event) {
+    const container = document.getElementById('multiDropdownContainer');
+    const menu = document.getElementById('multiMenu');
+    
+    if (container && menu && !container.contains(event.target)) {
+        menu.classList.remove('show');
+    }
+});
+
+// 3. 切換選單內的頁面視圖
+window.switchDropdownView = function(viewName) {
+    const viewMain = document.getElementById('dropdown-view-main');
+    const viewLeaderboard = document.getElementById('dropdown-view-leaderboard');
+    if (!viewMain || !viewLeaderboard) return;
+
+    if (viewName === 'leaderboard') {
+        viewMain.style.display = 'none';
+        viewLeaderboard.style.display = 'block';
+        populateLeaderboard(); 
+    } else {
+        viewLeaderboard.style.display = 'none';
+        viewMain.style.display = 'block';
+    }
+}
+
+// 4. 發送 Bug Report (串接 Upstash Redis)
+window.sendBugReport = async function() {
+    // 關閉選單
+    const menu = document.getElementById('multiMenu');
+    if (menu) menu.classList.remove('show');
+
+    // 獲取使用者輸入
+    const bugDesc = prompt("🐛 Por favor, describa el error del sistema que encontró.\n(Esto se enviará a la base de datos)");
+    if (!bugDesc || bugDesc.trim() === "") return;
+
+    // 產生一個唯一的錯誤報告 ID (使用時間戳記)
+    const reportId = "bug_report_" + new Date().getTime();
+    
+    // 準備要寫入資料庫的資料
+    const reportData = JSON.stringify({
+        id: reportId,
+        employee: currentSelectedEmployee || "Unknown",
+        description: bugDesc,
+        timestamp: new Date().toISOString()
+    });
+
+    console.log("準備發送 Bug Report:", reportData);
+
+    try {
+        // 使用 Upstash Redis REST API 儲存錯誤報告
+        const response = await fetch(`${UPSTASH_URL}/set/${reportId}`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${UPSTASH_TOKEN}`
+            },
+            body: reportData
+        });
+
+        const json = await response.json();
+
+        if (json.result === "OK") {
+            alert("✅ El informe de error se ha enviado correctamente a la base de datos. Los ingenieros lo atenderán lo antes posible.");
+        } else {
+            console.error("Upstash Error:", json);
+            alert("❌ No se pudo enviar el informe de error (la base de datos lo rechazó); por favor, inténtelo de nuevo más tarde.");
+        }
+    } catch (error) {
+        console.error("Sent Fail:", error);
+        alert("❌ No se pudo enviar el informe de error; por favor, compruebe su conexión a la red.");
+    }
+}
+
+// 5. 渲染遲到排行榜
+function populateLeaderboard() {
+    const listEl = document.getElementById('leaderboardList');
+    if (!listEl) return;
+    listEl.innerHTML = ''; 
+
+    let leaderboardData = [];
+    Object.keys(employeesData).forEach(empName => {
+        const result = calculateEmployeeData(empName);
+        if (result.sumLateMins > 0) {
+            leaderboardData.push({ name: empName, lateMins: result.sumLateMins });
+        }
+    });
+
+    leaderboardData.sort((a, b) => b.lateMins - a.lateMins);
+
+    if (leaderboardData.length === 0) {
+        listEl.innerHTML = '<div style="padding: 15px; text-align: center; color: #10b981; font-size: 13px;">🎉 太棒了！沒有任何人遲到</div>';
+        return;
+    }
+
+    leaderboardData.forEach((emp, index) => {
+        let badge = index === 0 ? "🥇" : (index === 1 ? "🥈" : (index === 2 ? "🥉" : "👤"));
+        let isActive = (emp.name === currentSelectedEmployee);
+        let activeClass = isActive ? "active" : "";
+
+        listEl.innerHTML += `
+            <div class="dropdown-item ${activeClass}" onclick="selectEmpFromLeaderboard('${emp.name}')">
+                <span class="emp-name">${badge} ${emp.name}</span>
+                <span class="late-time">${formatMins(emp.lateMins)}</span>
+            </div>
+        `;
+    });
+}
+
+// 6. 點擊排行榜選項時切換員工，並關閉選單
+window.selectEmpFromLeaderboard = function(empName) {
+    document.getElementById('empSelect').value = empName;
+    switchEmployee(); 
+    document.getElementById('multiMenu').classList.remove('show');
 }
