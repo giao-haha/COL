@@ -83,6 +83,10 @@ document.getElementById('fileInput').addEventListener('change', async function(e
 });
 
 function finishDataLoading() {
+    // 隱藏上傳檔案的區塊
+    const uploadSection = document.querySelector('.upload-section');
+    if (uploadSection) uploadSection.style.display = 'none';
+
     populateEmployeeDropdown();
     document.getElementById('loading').style.display = 'none';
     document.getElementById('controlPanel').style.display = 'flex';
