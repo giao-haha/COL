@@ -1005,20 +1005,136 @@ document.addEventListener('click', function(event) {
     }
 });
 
-// 3. 切換選單內的頁面視圖
+// 3. 切換選單內的頁面視圖 (Soporta 4 vistas)
 window.switchDropdownView = function(viewName) {
     const viewMain = document.getElementById('dropdown-view-main');
     const viewLeaderboard = document.getElementById('dropdown-view-leaderboard');
-    if (!viewMain || !viewLeaderboard) return;
+    const viewLateDays = document.getElementById('dropdown-view-latedays');
+    const viewReport = document.getElementById('dropdown-view-report'); // Nueva vista
 
+    if (!viewMain || !viewLeaderboard || !viewLateDays || !viewReport) return;
+
+    // Ocultar todas
+    viewMain.style.display = 'none';
+    viewLeaderboard.style.display = 'none';
+    viewLateDays.style.display = 'none';
+    viewReport.style.display = 'none';
+
+    // Mostrar la seleccionada
     if (viewName === 'leaderboard') {
-        viewMain.style.display = 'none';
         viewLeaderboard.style.display = 'block';
         populateLeaderboard(); 
+    } else if (viewName === 'latedays') {
+        viewLateDays.style.display = 'block';
+        populateLateDays(); 
+    } else if (viewName === 'report') {
+        viewReport.style.display = 'block';
+        generateReportText(); // Generar el texto automáticamente al abrir
     } else {
-        viewLeaderboard.style.display = 'none';
         viewMain.style.display = 'block';
     }
+}
+
+// 4. Generar el texto del reporte automáticamente
+window.generateReportText = function() {
+    let descontar = [];
+    let atencion = [];
+    let excelente = [];
+
+    Object.keys(employeesData).forEach(empName => {
+        const result = calculateEmployeeData(empName);
+        const lateDays = result.dashLateDays;
+        
+        // Extraer el "First Name" (Divide el nombre por espacios o puntos y toma la primera parte)
+        const firstName = empName.split(/[\s.]+/)[0];
+        
+        // Agregarle el "@" adelante
+        const tag = `${firstName}`;
+
+        // Clasificar según las reglas
+        if (lateDays > 3) {
+            descontar.push(tag);
+        } else if (lateDays >= 1 && lateDays <= 3) {
+            atencion.push(tag);
+        } else if (lateDays === 0) {
+            excelente.push(tag);
+        }
+    });
+
+    // Construir el formato de texto final
+    let reportText = `la persona que se le va a descontar este mes es\n`;
+    reportText += `${descontar.join(' ')} -50.000 por el motivo de llegada tarde\n`;
+    reportText += `🗣️Llamada atención\n`;
+    reportText += `${atencion.join(' ')}\n`;
+    reportText += `🥳Excelente empleado\n`;
+    reportText += `Canal 💲5️⃣0️⃣0️⃣0️⃣0️⃣\n`;
+    reportText += `${excelente.join(' ')}`;
+
+    // Insertarlo en el cuadro de texto
+    const textarea = document.getElementById('reportTextArea');
+    if (textarea) textarea.value = reportText;
+}
+
+// 5. Función para copiar el texto al portapapeles
+window.copyReportToClipboard = function() {
+    const textarea = document.getElementById('reportTextArea');
+    if (!textarea) return;
+    
+    // Seleccionar y copiar
+    textarea.select();
+    textarea.setSelectionRange(0, 99999); // Para compatibilidad móvil
+    
+    try {
+        document.execCommand('copy');
+        alert('✅ ¡Reporte copiado al portapapeles exitosamente!');
+    } catch (err) {
+        alert('❌ Error al copiar. Por favor, cópialo manualmente.');
+    }
+    
+    // Quitar la selección para que se vea bien
+    window.getSelection().removeAllRanges();
+}
+
+// 6. 渲染第三頁：遲到天數統計
+function populateLateDays() {
+    const listEl = document.getElementById('lateDaysList');
+    if (!listEl) return;
+    listEl.innerHTML = ''; 
+
+    let lateDaysData = [];
+    
+    Object.keys(employeesData).forEach(empName => {
+        const result = calculateEmployeeData(empName);
+        lateDaysData.push({ name: empName, lateDays: result.dashLateDays });
+    });
+
+    lateDaysData.sort((a, b) => b.lateDays - a.lateDays);
+
+    if (lateDaysData.length === 0) {
+        listEl.innerHTML = '<div style="padding: 15px; text-align: center; color: #94a3b8; font-size: 13px;">No hay datos de empleados.</div>';
+        return;
+    }
+
+    lateDaysData.forEach(emp => {
+        let isActive = (emp.name === currentSelectedEmployee);
+        let activeClass = isActive ? "active" : "";
+        
+        let textHtml = "";
+        if (emp.lateDays === 0) {
+            textHtml = `<span style="color:var(--success); font-weight:600; font-size:12px;">✅ Sin retrasos</span>`;
+        } else {
+            let diaTexto = emp.lateDays === 1 ? "día tarde" : "días tarde";
+            textHtml = `<span style="color:var(--danger); font-weight:600; font-size:12px;">❌ ${emp.lateDays} ${diaTexto}</span>`;
+        }
+
+        // Ñamoĩ CSS ikatu hag̃uáicha umi téra oñekytĩ porã
+        listEl.innerHTML += `
+            <div class="dropdown-item ${activeClass}" onclick="selectEmpFromLeaderboard('${emp.name}')" style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                <span class="emp-name" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;" title="${emp.name}">👤 ${emp.name}</span>
+                <span style="flex-shrink: 0; text-align: right;">${textHtml}</span>
+            </div>
+        `;
+    });
 }
 
 // 4. 發送 Bug Report (串接 Upstash Redis)
@@ -1067,7 +1183,7 @@ window.sendBugReport = async function() {
     }
 }
 
-// 5. 渲染遲到排行榜
+// 5. 渲染第二頁：遲到排行榜
 function populateLeaderboard() {
     const listEl = document.getElementById('leaderboardList');
     if (!listEl) return;
@@ -1084,7 +1200,7 @@ function populateLeaderboard() {
     leaderboardData.sort((a, b) => b.lateMins - a.lateMins);
 
     if (leaderboardData.length === 0) {
-        listEl.innerHTML = '<div style="padding: 15px; text-align: center; color: #10b981; font-size: 13px;">Waiting For Data</div>';
+        listEl.innerHTML = '<div style="padding: 15px; text-align: center; color: #10b981; font-size: 13px;">🎉 ¡Excelente! Nadie ha llegado tarde.</div>';
         return;
     }
 
@@ -1093,10 +1209,11 @@ function populateLeaderboard() {
         let isActive = (emp.name === currentSelectedEmployee);
         let activeClass = isActive ? "active" : "";
 
+        // Ñamoĩ CSS ikatu hag̃uáicha umi téra oñekytĩ porã
         listEl.innerHTML += `
-            <div class="dropdown-item ${activeClass}" onclick="selectEmpFromLeaderboard('${emp.name}')">
-                <span class="emp-name">${badge} ${emp.name}</span>
-                <span class="late-time">${formatMins(emp.lateMins)}</span>
+            <div class="dropdown-item ${activeClass}" onclick="selectEmpFromLeaderboard('${emp.name}')" style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                <span class="emp-name" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;" title="${emp.name}">${badge} ${emp.name}</span>
+                <span class="late-time" style="flex-shrink: 0; text-align: right;">${formatMins(emp.lateMins)}</span>
             </div>
         `;
     });

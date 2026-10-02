@@ -215,7 +215,28 @@ select.remark-select { width: 100%; margin-bottom: 8px; cursor: pointer; }
 }
 
 /* ================= 多視圖下拉選單樣式 ================= */
-.dropdown-container { position: relative; display: inline-block; }
+/* 確保下拉選單容器大小與按鈕一致，不會被 flex 強制拉伸 */
+.dropdown-container { 
+    position: relative; 
+    display: inline-block; 
+    width: max-content; 
+    flex-shrink: 0;
+}
+
+/* 下拉選單本體 */
+.dropdown-menu {
+    display: none; 
+    position: absolute !important; /* ⚠️ 強制絕對定位，絕對不會推開下方內容 */
+    top: calc(100% + 8px); 
+    right: 0; 
+    width: 260px !important; /* ⚠️ 強制固定寬度，防止排版變形 */
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-light); 
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md); 
+    z-index: 1000 !important; /* ⚠️ 確保永遠蓋在所有元素的最上層 */
+    overflow: hidden;
+}
 
 .btn-dark-outline {
     background-color: #27272a; color: white; border: none;
@@ -226,12 +247,6 @@ select.remark-select { width: 100%; margin-bottom: 8px; cursor: pointer; }
 .btn-dark-outline .btn-text { margin-right: 8px; font-size: 14px; font-weight: 500; }
 .btn-dark-outline .btn-icon { color: #a1a1aa; display: flex; }
 
-.dropdown-menu {
-    display: none; position: absolute; top: calc(100% + 8px); right: 0;
-    width: 260px; background-color: var(--bg-surface);
-    border: 1px solid var(--border-light); border-radius: var(--radius-md);
-    box-shadow: var(--shadow-md); z-index: 1000; overflow: hidden;
-}
 .dropdown-menu.show { display: block; animation: fadeIn 0.15s ease-out; }
 
 @keyframes fadeIn {
