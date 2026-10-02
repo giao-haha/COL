@@ -206,11 +206,26 @@ select.remark-select { width: 100%; margin-bottom: 8px; cursor: pointer; }
 #pdf-export-container { display: none; }
 
 @media print {
-    @page { size: portrait; margin: 10mm; } 
-    body { background-color: #fff !important; padding: 0 !important; margin: 0 !important; font-family: sans-serif; }
+    @page { 
+        /* 預設為 US Legal 直向，並將實體邊距設為 0 以強制隱藏瀏覽器頁首/頁尾 */
+        size: legal portrait; 
+        margin: 10mm; 
+    } 
+    
+    body { 
+        background-color: #fff !important; 
+        /* 將原本的 10mm 邊距移到這裡，避免內容貼齊紙張邊緣 */
+        padding: 10mm !important; 
+        margin: 0 !important; 
+        font-family: sans-serif; 
+    }
+    
     .container { display: none !important; } 
+    
     #pdf-export-container { display: block !important; width: 100% !important; margin: 0; padding: 0; }
+    
     .page-break { page-break-after: always; } 
+    
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 }
 
