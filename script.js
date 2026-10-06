@@ -1063,7 +1063,7 @@ window.generateReportText = function() {
 
     // Construir el formato de texto final
     let reportText = `la persona que se le va a descontar este mes es\n`;
-    reportText += `${descontar.join(' ')} -50.000 por el motivo de llegada tarde\n`;
+    reportText += `${descontar.join(' ')} 💲5️⃣0️⃣0️⃣0️⃣0️⃣ por el motivo de llegada tarde\n`;
     reportText += `🗣️Llamada atención\n`;
     reportText += `${atencion.join(' ')}\n`;
     reportText += `🥳Excelente empleado\n`;
