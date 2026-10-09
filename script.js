@@ -882,35 +882,21 @@ window.savePunch = function(index) {
 const UPSTASH_URL = "https://becoming-walleye-103076.upstash.io"; 
 const UPSTASH_TOKEN = "gQAAAAAAAZKkAAIgcDJkNWVjMzc2ZDYwZjk0M2E1OWU5YmI3ZjMyNTU0ZDNjOA";
 
-// 1. 透過公網 IP 獲取城市，並產生智慧代碼 (例如: bog-4812)
-async function generateSmartCode() {
-    try {
-        const response = await fetch('https://get.geojs.io/v1/ip/geo.json');
-        const data = await response.json();
+// 1. 生成 5 位随机提取码
+function generateSyncCode() {
+    const first = '123456789';
+    const rest = '0123456789';
 
-        // 優先嘗試抓取 region (省份/州)，如果沒有則抓取 city (城市)
-        const locName = data.region || data.city;
+    let code = first.charAt(Math.floor(Math.random() * first.length));
 
-        if (locName) {
-            // 正規化名稱：去掉重音、轉小寫、只保留字母，並取前 3 個字
-            const prefix = locName
-                .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-                .replace(/[^a-zA-Z]/g, "")
-                .toLowerCase()
-                .substring(0, 3);
-            
-            const randomNum = Math.floor(1000 + Math.random() * 9000);
-            return `${prefix}-${randomNum}`; 
-        }
-    } catch (e) {
-        console.warn("No se pudo obtener la ubicación. Usando prefijo por defecto.");
+    for (let i = 0; i < 4; i++) {
+        code += rest.charAt(Math.floor(Math.random() * rest.length));
     }
-    
-    // 如果 API 失敗，則降級使用 sys 前綴
-    return `sys-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    return code;
 }
 
-// 2. 將本地數據上傳到 Upstash 雲端
+// 2. 将本地数据上传到 Upstash 云端
 async function uploadToCloud() {
     const data = localStorage.getItem('asistenciaSystemData');
     if (!data) {
@@ -918,45 +904,25 @@ async function uploadToCloud() {
         return;
     }
 
+    const code = generateSyncCode();
     const loadingEl = document.getElementById('loading');
-    
-    // 讀取上次使用的代碼
-    let suggestedCode = localStorage.getItem('lastSyncCode');
-    
-    // 如果是第一次使用，動態根據 IP 產生智慧代碼
-    if (!suggestedCode) {
-        loadingEl.style.display = 'block';
-        loadingEl.innerText = '🌐 Obteniendo ubicación para generar código...';
-        suggestedCode = await generateSmartCode();
-        loadingEl.style.display = 'none';
-    }
-
-    // 彈出視窗讓使用者確認或修改
-    let code = prompt("☁️ Confirma o edita tu código de respaldo (Sugerido basado en tu ubicación):", suggestedCode);
-    if (!code) return;
-    
-    // 格式化輸入：轉小寫並替換空格為中劃線
-    code = code.trim().toLowerCase().replace(/\s+/g, '-');
-    
-    // 讓瀏覽器記住這次輸入的代碼
-    localStorage.setItem('lastSyncCode', code);
-
     loadingEl.style.display = 'block';
     loadingEl.innerText = '☁️ Subiendo a la nube de forma segura...';
 
     try {
+        // Upstash 的 SET 指令，通过 REST API 直接写入数据
         const response = await fetch(`${UPSTASH_URL}/set/${code}`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${UPSTASH_TOKEN}` },
+            headers: {
+                'Authorization': `Bearer ${UPSTASH_TOKEN}`
+            },
             body: data
         });
 
         const json = await response.json();
 
         if (json.result === "OK") {
-            // 自動複製到剪貼簿
-            navigator.clipboard.writeText(code).catch(() => {});
-            alert(`✅ ¡Respaldo exitoso!\n\n🔑 Tu código es: 【 ${code} 】\n\n(Se ha copiado automáticamente al portapapeles)`);
+            alert(`✅ ¡Respaldo exitoso!\n\n🔑 Tu código de extracción es: 【 ${code} 】\n\nGuarda este código para descargar tus datos en otra computadora.`);
         } else {
             alert("❌ Error al guardar en la nube.");
         }
@@ -968,29 +934,35 @@ async function uploadToCloud() {
     }
 }
 
-// 3. 透過代碼從 Upstash 拉取數據
+// 3. 通过 5位代码 从 Upstash 拉取数据
 async function downloadFromCloud() {
-    let suggestedCode = localStorage.getItem('lastSyncCode') || "";
-    let code = prompt("📥 Ingresa tu código de respaldo para importar tus datos:", suggestedCode);
-    
+    let code = prompt("📥 Ingresa el código de 5 caracteres para importar tus datos:");
     if (!code) return;
-    code = code.trim().toLowerCase().replace(/\s+/g, '-');
+    
+    code = code.trim();
+
+    if (code.length !== 5) {
+        alert("⚠️ El código debe tener exactamente 5 caracteres.");
+        return;
+    }
 
     const loadingEl = document.getElementById('loading');
     loadingEl.style.display = 'block';
     loadingEl.innerText = '📥 Descargando y sincronizando datos...';
 
     try {
+        // Upstash 的 GET 指令，通过 REST API 读取数据
         const response = await fetch(`${UPSTASH_URL}/get/${code}`, {
             method: 'GET',
-            headers: { 'Authorization': `Bearer ${UPSTASH_TOKEN}` }
+            headers: {
+                'Authorization': `Bearer ${UPSTASH_TOKEN}`
+            }
         });
         
         const json = await response.json();
 
         if (json.result) {
             localStorage.setItem('asistenciaSystemData', json.result);
-            localStorage.setItem('lastSyncCode', code); // 成功下載也記住該代碼
             alert("✅ ¡Datos importados con éxito! La página se recargará para aplicar los cambios.");
             location.reload();
         } else {
