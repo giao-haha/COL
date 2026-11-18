@@ -4,6 +4,8 @@ let currentSelectedEmployee = "";
 let globalMealBreakMins = 30;
 let globalGracePeriodMins = 10; 
 let globalHolidays = []; 
+let autoDescansoSabado = false;
+let autoDescansoDomingo = false;
 let weekendNoBreak = true; 
 let splitMonthEnabled = false;   
 let splitDayThreshold = 15;      
@@ -101,6 +103,9 @@ function finishDataLoading() {
 
     if (globalHolidays && globalHolidays.length > 0) {
         applyHolidaysToData();
+    }
+    if (autoDescansoSabado || autoDescansoDomingo) {
+        applyWeekendDescansoState();
     }
 
     populateEmployeeDropdown();
@@ -367,8 +372,28 @@ function formatMins(mins) {
 }
 
 // ==========================================
-// 🗓️ GESTIÓN DE DÍAS FESTIVOS (SELECCIÓN MÚLTIPLE)
+// 🗓️ GESTIÓN DE DÍAS FESTIVOS (FORMATO CALENDARIO SEMANAL)
 // ==========================================
+
+function getDayNameForDayNum(dayNum) {
+    if (employeesData && Object.keys(employeesData).length > 0) {
+        const firstEmp = Object.keys(employeesData)[0];
+        const record = employeesData[firstEmp].find(r => {
+            if (!r || !r.date) return false;
+            let d = parseInt(r.date.split('/')[0], 10);
+            return d === dayNum;
+        });
+        if (record && record.day) {
+            let norm = normalizeDay(record.day);
+            const map = {
+                'lunes': 'Lun', 'martes': 'Mar', 'miércoles': 'Mié',
+                'jueves': 'Jue', 'viernes': 'Vie', 'sábado': 'Sáb', 'domingo': 'Dom'
+            };
+            return map[norm] || record.day.substring(0, 3);
+        }
+    }
+    return '';
+}
 
 function renderHolidayGrid() {
     const container = document.getElementById('holidayGrid');
@@ -378,21 +403,34 @@ function renderHolidayGrid() {
     for (let day = 1; day <= 31; day++) {
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.textContent = day;
         btn.setAttribute('data-day', day);
 
         const isSelected = globalHolidays.includes(day);
+        const dayName = getDayNameForDayNum(day);
+        const isWeekend = (dayName === 'Sáb' || dayName === 'Dom');
+
+        let innerContent = `<div style="font-size:13px; font-weight:700; line-height:1.1;">${day}</div>`;
+        if (dayName) {
+            innerContent += `<div style="font-size:10px; margin-top:2px; font-weight:600; opacity:0.85;">${dayName}</div>`;
+        }
+        btn.innerHTML = innerContent;
+
         if (isSelected) {
-            btn.style.cssText = 'height:38px; border-radius:6px; font-weight:700; font-size:13px; cursor:pointer; background-color:#d97706; color:#ffffff; border:1px solid #b45309; box-shadow:0 2px 4px rgba(217,119,6,0.3); transition:all 0.15s ease;';
+            btn.style.cssText = 'height:46px; border-radius:8px; cursor:pointer; background-color:#d97706; color:#ffffff; border:1px solid #b45309; box-shadow:0 2px 4px rgba(217,119,6,0.3); display:flex; flex-direction:column; align-items:center; justify-content:center; transition:all 0.15s ease;';
         } else {
-            btn.style.cssText = 'height:38px; border-radius:6px; font-weight:500; font-size:13px; cursor:pointer; background-color:#f8fafc; color:#334155; border:1px solid #cbd5e1; transition:all 0.15s ease;';
+            let bg = isWeekend ? '#f1f5f9' : '#ffffff';
+            let color = isWeekend ? '#64748b' : '#1e293b';
+            let border = isWeekend ? '#cbd5e1' : '#e2e8f0';
+            btn.style.cssText = `height:46px; border-radius:8px; cursor:pointer; background-color:${bg}; color:${color}; border:1px solid ${border}; display:flex; flex-direction:column; align-items:center; justify-content:center; transition:all 0.15s ease;`;
         }
 
         btn.onmouseover = function() {
             if (!globalHolidays.includes(day)) btn.style.backgroundColor = '#e2e8f0';
         };
         btn.onmouseout = function() {
-            if (!globalHolidays.includes(day)) btn.style.backgroundColor = '#f8fafc';
+            if (!globalHolidays.includes(day)) {
+                btn.style.backgroundColor = isWeekend ? '#f1f5f9' : '#ffffff';
+            }
         };
 
         btn.onclick = () => toggleHoliday(day);
@@ -454,71 +492,39 @@ function applyHolidaysToData() {
 }
 
 // ==========================================
-// 🏖️ ASIGNAR FINES DE SEMANA COMO DESCANSO
+// 🏖️ GESTIÓN DE FINES DE SEMANA (DESCANSO AUTOMÁTICO)
 // ==========================================
 
-window.applyWeekendDescanso = function(dayName) {
-    const isSabado = (dayName === 'sábado');
-    const dayDisplay = isSabado ? 'Sábados' : 'Domingos';
-
-    if (!employeesData || Object.keys(employeesData).length === 0) {
-        alert("⚠️ No hay datos de empleados cargados. Primero suba un archivo de asistencia.");
-        return;
-    }
-
-    let totalTargetDays = 0;
-    let markedDescansoDays = 0;
+function applyWeekendDescansoState() {
+    if (!employeesData || Object.keys(employeesData).length === 0) return;
 
     Object.keys(employeesData).forEach(emp => {
         employeesData[emp].forEach(row => {
-            if (normalizeDay(row.day) === dayName) {
-                let hasPunch = (row.adjustedRecord || row.record || "").includes("-");
-                if (!hasPunch) {
-                    totalTargetDays++;
-                    if (row.remark === "Descanso") markedDescansoDays++;
+            const dayKey = normalizeDay(row.day);
+            const isSabado = (dayKey === 'sábado');
+            const isDomingo = (dayKey === 'domingo');
+            if (!isSabado && !isDomingo) return;
+
+            // Nunca sobrescribir a quienes sí trabajaron y tienen marcaje
+            const hasPunch = (row.adjustedRecord || row.record || "").includes("-");
+            if (hasPunch) return;
+
+            if (isSabado) {
+                if (autoDescansoSabado) {
+                    if (!row.remark || row.remark === "") row.remark = "Descanso";
+                } else {
+                    if (row.remark === "Descanso") row.remark = "";
+                }
+            } else if (isDomingo) {
+                if (autoDescansoDomingo) {
+                    if (!row.remark || row.remark === "") row.remark = "Descanso";
+                } else {
+                    if (row.remark === "Descanso") row.remark = "";
                 }
             }
         });
     });
-
-    if (totalTargetDays === 0) {
-        alert(`ℹ️ No se encontraron ${dayDisplay} sin marcaje.`);
-        return;
-    }
-
-    const allAlreadyMarked = (markedDescansoDays === totalTargetDays && totalTargetDays > 0);
-    const confirmMsg = allAlreadyMarked
-        ? `Todos los ${dayDisplay} sin marcaje ya están marcados como 【Descanso】.\n\n¿Desea DESMARCARLOS y volver a dejarlos sin nota?`
-        : `¿Marcar todos los ${dayDisplay} sin marcaje como 【Descanso】 para todos los empleados (${totalTargetDays - markedDescansoDays} registros)?\n\n(Los empleados que registraron horas de trabajo NO serán modificados).`;
-
-    if (!confirm(confirmMsg)) return;
-
-    let modifiedCount = 0;
-    Object.keys(employeesData).forEach(emp => {
-        employeesData[emp].forEach(row => {
-            if (normalizeDay(row.day) === dayName) {
-                let hasPunch = (row.adjustedRecord || row.record || "").includes("-");
-                if (!hasPunch) {
-                    if (allAlreadyMarked) {
-                        if (row.remark === "Descanso") {
-                            row.remark = "";
-                            modifiedCount++;
-                        }
-                    } else {
-                        if (!row.remark || row.remark === "") {
-                            row.remark = "Descanso";
-                            modifiedCount++;
-                        }
-                    }
-                }
-            }
-        });
-    });
-
-    if (currentSelectedEmployee) renderTable(currentSelectedEmployee);
-    saveToLocalStorage();
-    alert(`✅ ¡Operación completada! Se actualizaron ${modifiedCount} registros de ${dayDisplay}.`);
-};
+}
 
 function toggleSettings() {
     const panel = document.getElementById('settingsPanel');
@@ -527,6 +533,11 @@ function toggleSettings() {
         document.getElementById('settingScope').value = 'global'; 
         switchSettingScope(); 
         renderHolidayGrid();
+
+        const sabadoCb = document.getElementById('descansoSabadoCheckbox');
+        if (sabadoCb) sabadoCb.checked = autoDescansoSabado;
+        const domingoCb = document.getElementById('descansoDomingoCheckbox');
+        if (domingoCb) domingoCb.checked = autoDescansoDomingo;
     } else { 
         panel.style.display = 'none'; 
     }
@@ -623,6 +634,13 @@ function saveSettings() {
         });
         alert(`✅ ¡Horario personal para [${currentSelectedEmployee}] guardado!`);
     }
+
+    const sabadoCb = document.getElementById('descansoSabadoCheckbox');
+    if (sabadoCb) autoDescansoSabado = sabadoCb.checked;
+    const domingoCb = document.getElementById('descansoDomingoCheckbox');
+    if (domingoCb) autoDescansoDomingo = domingoCb.checked;
+
+    applyWeekendDescansoState();
     applyHolidaysToData();
     document.getElementById('settingsPanel').style.display = 'none';
     if(currentSelectedEmployee) renderTable(currentSelectedEmployee); 
@@ -1045,7 +1063,9 @@ function saveToLocalStorage() {
         employeesData, globalSchedules, employeeSchedules, 
         globalMealBreakMins, globalGracePeriodMins, weekendNoBreak, 
         splitMonthEnabled, splitDayThreshold,
-        globalHolidays  
+        globalHolidays,
+        autoDescansoSabado,
+        autoDescansoDomingo  
     };
     try {
         localStorage.setItem('asistenciaSystemData', JSON.stringify(dataToSave));
@@ -1082,6 +1102,8 @@ function loadFromLocalStorage() {
             globalMealBreakMins = parsed.globalMealBreakMins !== undefined ? parsed.globalMealBreakMins : 30;
             globalGracePeriodMins = parsed.globalGracePeriodMins !== undefined ? parsed.globalGracePeriodMins : 10;
             globalHolidays = parsed.globalHolidays || [];
+            autoDescansoSabado = parsed.autoDescansoSabado !== undefined ? parsed.autoDescansoSabado : false;
+            autoDescansoDomingo = parsed.autoDescansoDomingo !== undefined ? parsed.autoDescansoDomingo : false;
             weekendNoBreak = parsed.weekendNoBreak !== undefined ? parsed.weekendNoBreak : true;
             
             splitMonthEnabled = parsed.splitMonthEnabled || false;
@@ -1092,6 +1114,11 @@ function loadFromLocalStorage() {
             document.getElementById('mealBreakInput').value = globalMealBreakMins;
             const graceInput = document.getElementById('gracePeriodInput');
             if (graceInput) graceInput.value = globalGracePeriodMins;
+
+            const sabadoCb = document.getElementById('descansoSabadoCheckbox');
+            if (sabadoCb) sabadoCb.checked = autoDescansoSabado;
+            const domingoCb = document.getElementById('descansoDomingoCheckbox');
+            if (domingoCb) domingoCb.checked = autoDescansoDomingo;
 
             renderHolidayGrid();
 
