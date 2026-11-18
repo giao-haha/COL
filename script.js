@@ -2,11 +2,22 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs
 let employeesData = {}; 
 let currentSelectedEmployee = "";
 let globalMealBreakMins = 30;
+let globalGracePeriodMins = 10; 
 let weekendNoBreak = true; 
 let splitMonthEnabled = false;   
 let splitDayThreshold = 15;      
 
 const leaveCategories = ["Permiso", "Incapacidad", "Vacaciones", "Día Festivo", "Descanso", "Falta", "Exento", "Salida Ant."];
+
+function escapeHtml(str) {
+    if (str === null || str === undefined) return "";
+    return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
 
 let globalSchedules = {
     'lunes': { in: "08:30", out: "17:00", in2: "08:30", out2: "15:00", name: "Lunes" },
@@ -109,20 +120,67 @@ function parseExcelGrid(sheetData) {
     const diasSemana = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
     let year = new Date().getFullYear(), month = new Date().getMonth() + 1;
     let daysRowIndex = -1;
+    let detectedDate = false;
 
-    for (let i = 0; i < Math.min(20, sheetData.length); i++) {
+    for (let i = 0; i < Math.min(25, sheetData.length); i++) {
         let row = sheetData[i];
         if (!row) continue;
         for (let j = 0; j < row.length; j++) {
-            if (typeof row[j] === 'string' && row[j].includes('~') && row[j].match(/(\d{4})-(\d{2})/)) {
-                let match = row[j].match(/(\d{4})-(\d{2})/);
-                if (match) { year = parseInt(match[1]); month = parseInt(match[2]); }
+            if (row[j] === null || row[j] === undefined) continue;
+            let cellStr = row[j].toString().trim();
+
+            if (!detectedDate) {
+                // Formato YYYY-MM o YYYY/MM (ej: 2024-05-01 ~ 2024-05-31 o 2024/05)
+                let matchYMD = cellStr.match(/(\d{4})[-/.年](\d{1,2})/);
+                if (matchYMD && (cellStr.includes('~') || cellStr.includes('-'))) {
+                    year = parseInt(matchYMD[1], 10);
+                    month = parseInt(matchYMD[2], 10);
+                    detectedDate = true;
+                } else {
+                    // Formato DD/MM/YYYY ~ DD/MM/YYYY
+                    let matchDMY = cellStr.match(/\d{1,2}[-/.月](\d{1,2})[-/.年](\d{4})/);
+                    if (matchDMY && cellStr.includes('~')) {
+                        month = parseInt(matchDMY[1], 10);
+                        year = parseInt(matchDMY[2], 10);
+                        detectedDate = true;
+                    }
+                }
             }
         }
-        if (row[0] == 1 && row[1] == 2) daysRowIndex = i;
+        
+        // Identificar la fila de días del mes (1, 2, 3...)
+        if (daysRowIndex === -1 && row.length >= 2) {
+            let firstVal = parseInt(row[0], 10);
+            let secondVal = parseInt(row[1], 10);
+            if (firstVal === 1 && secondVal === 2) {
+                daysRowIndex = i;
+            } else {
+                let idx1 = row.findIndex(val => parseInt(val, 10) === 1);
+                if (idx1 !== -1 && idx1 + 1 < row.length && parseInt(row[idx1 + 1], 10) === 2) {
+                    daysRowIndex = i;
+                }
+            }
+        }
     }
 
-    if (daysRowIndex === -1) { alert("No se pudo identificar la estructura en Excel."); return parsedData; }
+    // Si no se detectó fecha en el encabezado, solicitar confirmación al usuario para no desfasar días
+    if (!detectedDate) {
+        let defaultPeriod = `${year}-${month.toString().padStart(2, '0')}`;
+        let userInput = prompt(
+            "⚠️ No se pudo detectar automáticamente el año y mes en el archivo Excel.\n" +
+            "Por favor, confirme el período correspondiente (Formato YYYY-MM, Ej: 2024-10):",
+            defaultPeriod
+        );
+        if (userInput && userInput.trim()) {
+            let matchInput = userInput.trim().match(/^(\d{4})[-/.](\d{1,2})$/);
+            if (matchInput) {
+                year = parseInt(matchInput[1], 10);
+                month = parseInt(matchInput[2], 10);
+            }
+        }
+    }
+
+    if (daysRowIndex === -1) { alert("No se pudo identificar la estructura de días en Excel."); return parsedData; }
     let daysRow = sheetData[daysRowIndex];
 
     function formatExcelPunch(text) {
@@ -151,7 +209,7 @@ function parseExcelGrid(sheetData) {
             if (punchRow) {
                 for (let c = 0; c < daysRow.length; c++) {
                     let dayNum = parseInt(daysRow[c]);
-                    if (!isNaN(dayNum)) {
+                    if (!isNaN(dayNum) && dayNum >= 1 && dayNum <= 31) {
                         let rawPunch = punchRow[c];
                         let formattedPunch = formatExcelPunch(rawPunch);
                         let d = new Date(year, month - 1, dayNum);
@@ -272,10 +330,29 @@ function getEffectiveSchedule(empName, dayKey, dateStr) {
     return target;
 }
 
+// Calcula la duración en minutos entre inicio y fin (soporta turnos que cruzan medianoche)
+function getDurationMinutes(startTime, endTime) {
+    if (!startTime || !endTime) return 0;
+    let [h1, m1] = startTime.split(':').map(Number);
+    let [h2, m2] = endTime.split(':').map(Number);
+    let diff = (h2 * 60 + m2) - (h1 * 60 + m1);
+    if (diff < 0) diff += 24 * 60; // Soporta cruce de medianoche (ej. 22:00 a 06:00)
+    return diff;
+}
+
+// Diferencia relativa de minutos entre dos puntos de tiempo (con soporte de medianoche)
+function getTimeDiffMinutes(t1, t2) {
+    if (!t1 || !t2) return 0;
+    let [h1, m1] = t1.split(':').map(Number);
+    let [h2, m2] = t2.split(':').map(Number);
+    let diff = (h1 * 60 + m1) - (h2 * 60 + m2);
+    if (diff < -720) diff += 1440;
+    else if (diff > 720) diff -= 1440;
+    return diff;
+}
+
 function getMinutesDiff(actualTime, thresholdTime) {
-    let [h1, m1] = actualTime.split(':').map(Number);
-    let [h2, m2] = thresholdTime.split(':').map(Number);
-    return (h1 * 60 + m1) - (h2 * 60 + m2);
+    return getTimeDiffMinutes(actualTime, thresholdTime);
 }
 
 function formatMins(mins) {
@@ -347,6 +424,10 @@ function switchSettingScope() {
 
 function saveSettings() {
     globalMealBreakMins = parseInt(document.getElementById('mealBreakInput').value) || 0;
+    
+    let graceVal = parseInt(document.getElementById('gracePeriodInput').value);
+    globalGracePeriodMins = (!isNaN(graceVal) && graceVal >= 0) ? graceVal : 10;
+
     weekendNoBreak = document.getElementById('weekendNoBreakCheckbox').checked; 
     
     splitMonthEnabled = document.getElementById('splitMonthCheckbox').checked;
@@ -443,26 +524,31 @@ function calculateEmployeeData(empName) {
 
         let workedMins = 0, dailyLate = 0, dailyEarly = 0, dailyOT = 0, reqMins = 0, dailyPenalty = 0;
         if (!isRestDay) {
-            reqMins = getMinutesDiff(schedule.out, schedule.in) - currentMealDeduction;
+            reqMins = getDurationMinutes(schedule.in, schedule.out) - currentMealDeduction;
             if (reqMins < 0) reqMins = 0;
         }
         if (effRecord && effRecord.includes("-")) {
             const [inT, outT] = effRecord.split("-").map(t => t.trim());
-            workedMins = getMinutesDiff(outT, inT) - currentMealDeduction; 
+            workedMins = getDurationMinutes(inT, outT) - currentMealDeduction; 
             if (workedMins < 0) workedMins = 0;
 
             if (!isRestDay) {
                 let [sH, sM] = schedule.in.split(':').map(Number);
-                sM += 10; if(sM >= 60) { sH++; sM -= 60; }
+                sM += globalGracePeriodMins;
+                while (sM >= 60) { sH++; sM -= 60; }
+                if (sH >= 24) sH -= 24;
                 let threshT = `${sH.toString().padStart(2,'0')}:${sM.toString().padStart(2,'0')}`;
-                if (inT > threshT) dailyLate = getMinutesDiff(inT, threshT);
+
+                let lateDiff = getTimeDiffMinutes(inT, threshT);
+                if (lateDiff > 0) dailyLate = lateDiff;
+
                 if (workedMins >= reqMins) {
                     dailyOT = workedMins - reqMins; dailyLate = 0; 
                 } else {
-                    let endExtra = getMinutesDiff(outT, schedule.out);
+                    let endExtra = getTimeDiffMinutes(outT, schedule.out);
                     if (endExtra > 0 && dailyLate > 0) dailyLate = Math.max(0, dailyLate - endExtra);
-                    if (outT < schedule.out) {
-                        let earlyDiff = getMinutesDiff(schedule.out, outT);
+                    let earlyDiff = getTimeDiffMinutes(schedule.out, outT);
+                    if (earlyDiff > 0) {
                         dailyEarly = Math.min(earlyDiff, reqMins - workedMins);
                     }
                 }
@@ -576,7 +662,7 @@ function renderTable(empName) {
             hoursHtml = `<span style="font-weight:600; color:${isHoursMet ? 'var(--success)' : 'var(--danger)'};">${Math.floor(workedMins/60)}h ${workedMins%60}m</span>`;
         }
 
-        let recordHtml = data.adjustedRecord ? `<strong style="font-family:monospace; font-size:14px; color:var(--primary);">${data.adjustedRecord}</strong> <span style="color:var(--success);font-size:11px; font-weight:600;">(Mod)</span>` : `<strong style="font-family:monospace; font-size:14px;">${data.record || "<span style='color:var(--text-muted);font-weight:normal;'>(Vacío)</span>"}</strong>`;
+        let recordHtml = data.adjustedRecord ? `<strong style="font-family:monospace; font-size:14px; color:var(--primary);">${escapeHtml(data.adjustedRecord)}</strong> <span style="color:var(--success);font-size:11px; font-weight:600;">(Mod)</span>` : `<strong style="font-family:monospace; font-size:14px;">${data.record ? escapeHtml(data.record) : "<span style='color:var(--text-muted);font-weight:normal;'>(Vacío)</span>"}</strong>`;
         
         let selValue = "", txtValue = "";
         if (data.remark) {
@@ -606,7 +692,7 @@ function renderTable(empName) {
                 <option value="Salida Ant." ${selValue==='Salida Ant.'?'selected':''}>Exento Salida Ant.</option>
                 <option value="Otro" ${selValue==='Otro'?'selected':''}>Otro (Especifique)</option>
             </select>
-            <input type="text" id="rmk-txt-${index}" placeholder="Ingrese motivo..." value="${txtValue}" style="display: ${(selValue==='Otro' || selValue==='Exento' || selValue==='Salida Ant.') ? 'block' : 'none'}; width: 100%;">
+            <input type="text" id="rmk-txt-${index}" placeholder="Ingrese motivo..." value="${escapeHtml(txtValue)}" style="display: ${(selValue==='Otro' || selValue==='Exento' || selValue==='Salida Ant.') ? 'block' : 'none'}; width: 100%;">
         `;
 
         let actionHtml = "";
@@ -652,8 +738,8 @@ function renderTable(empName) {
         const tr = document.createElement('tr');
         if (rowClass && !data.finalStatus) tr.className = rowClass;
         tr.innerHTML = `
-            <td style="font-weight:500;">${data.date}</td>
-            <td style="color:var(--text-muted);">${data.day}</td>
+            <td style="font-weight:500;">${escapeHtml(data.date)}</td>
+            <td style="color:var(--text-muted);">${escapeHtml(data.day)}</td>
             <td>${officialTimeHTML}</td>
             <td>${recordHtml}</td>
             <td>${hoursHtml}</td>
@@ -714,7 +800,7 @@ window.printAllReports = function() {
                       `<span style="color:#64748b;font-weight:bold;">Compensado</span>`;
 
         let headerHTML = `
-            <h2 style="border-bottom:2px solid #e2e8f0; padding-bottom:8px; margin-top:0;">👤 Reporte de Asistencia: <span style="color:#3b82f6">${empName}</span></h2>
+            <h2 style="border-bottom:2px solid #e2e8f0; padding-bottom:8px; margin-top:0;">👤 Reporte de Asistencia: <span style="color:#3b82f6">${escapeHtml(empName)}</span></h2>
             <div style="display:flex; justify-content:space-between; margin-bottom:15px; background:#f8fafc; padding:12px; border:1px solid #e2e8f0; border-radius:8px; font-size:13px;">
                 <div>✅ Asistencia: <strong style="color:#10b981">${result.dashNormal} d</strong></div>
                 <div>⏱️ Totales: <strong style="color:#3b82f6">${formatMins(result.sumWorkedMins)}</strong></div>
@@ -754,12 +840,12 @@ window.printAllReports = function() {
             } else if (data.remark === "Día Festivo" || data.remark === "Descanso") hoursHtml = `<span style="color:#10b981; font-weight:bold;">0h 0m</span>`;
             else if (effRecord && effRecord.includes("-")) hoursHtml = `<span style="color:${isHoursMet ? '#10b981' : '#ef4444'}; font-weight:bold;">${Math.floor(workedMins/60)}h ${workedMins%60}m</span>`;
 
-            let recHtml = data.adjustedRecord ? `<strong>${data.adjustedRecord}</strong>` : `<strong>${data.record || ""}</strong>`;
-            let rmkHtml = data.remark || `<span style="color:#94a3b8">-</span>`;
+            let recHtml = data.adjustedRecord ? `<strong>${escapeHtml(data.adjustedRecord)}</strong>` : `<strong>${escapeHtml(data.record || "")}</strong>`;
+            let rmkHtml = data.remark ? escapeHtml(data.remark) : `<span style="color:#94a3b8">-</span>`;
 
             return `<tr style="${bgStyle}">
-                <td style="border-bottom:1px solid #e2e8f0; padding:6px;">${data.date}</td>
-                <td style="border-bottom:1px solid #e2e8f0; padding:6px;">${data.day}</td>
+                <td style="border-bottom:1px solid #e2e8f0; padding:6px;">${escapeHtml(data.date)}</td>
+                <td style="border-bottom:1px solid #e2e8f0; padding:6px;">${escapeHtml(data.day)}</td>
                 <td style="border-bottom:1px solid #e2e8f0; padding:6px; font-family:monospace;">${offHtml}</td>
                 <td style="border-bottom:1px solid #e2e8f0; padding:6px; font-family:monospace;">${recHtml}</td>
                 <td style="border-bottom:1px solid #e2e8f0; padding:6px;">${hoursHtml}</td>
@@ -785,13 +871,24 @@ window.printAllReports = function() {
     setTimeout(() => { loadingOverlay.remove(); window.print(); }, 500);
 }
 
+// Días de retención de datos locales (30 días). Pasado este tiempo se limpian automáticamente.
+const DATA_EXPIRY_DAYS = 30;
+
 function saveToLocalStorage() {
     const dataToSave = { 
+        timestamp: Date.now(), // Marca de tiempo para expiración automática
         employeesData, globalSchedules, employeeSchedules, 
-        globalMealBreakMins, weekendNoBreak, 
+        globalMealBreakMins, globalGracePeriodMins, weekendNoBreak, 
         splitMonthEnabled, splitDayThreshold  
     };
-    localStorage.setItem('asistenciaSystemData', JSON.stringify(dataToSave));
+    try {
+        localStorage.setItem('asistenciaSystemData', JSON.stringify(dataToSave));
+    } catch (e) {
+        if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+            alert("⚠️ El almacenamiento local del navegador está lleno. Por favor, respalde sus datos en la nube.");
+        }
+        console.error("Error al guardar en LocalStorage:", e);
+    }
 }
 
 function loadFromLocalStorage() {
@@ -799,10 +896,25 @@ function loadFromLocalStorage() {
     if (savedData) {
         try {
             const parsed = JSON.parse(savedData);
+
+            // Verificación de expiración por tiempo (TTL)
+            if (parsed.timestamp) {
+                const ageMs = Date.now() - parsed.timestamp;
+                const maxAgeMs = DATA_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+                if (ageMs > maxAgeMs) {
+                    console.warn(`[LocalStorage] Los datos locales han expirado (> ${DATA_EXPIRY_DAYS} días). Limpiando automáticamente...`);
+                    localStorage.removeItem('asistenciaSystemData');
+                    return;
+                }
+                const daysRemaining = Math.ceil((maxAgeMs - ageMs) / (24 * 60 * 60 * 1000));
+                console.log(`[LocalStorage] Datos válidos. Días restantes antes de expiración: ${daysRemaining}`);
+            }
+
             employeesData = parsed.employeesData || {};
             globalSchedules = parsed.globalSchedules || globalSchedules;
             employeeSchedules = parsed.employeeSchedules || {};
             globalMealBreakMins = parsed.globalMealBreakMins !== undefined ? parsed.globalMealBreakMins : 30;
+            globalGracePeriodMins = parsed.globalGracePeriodMins !== undefined ? parsed.globalGracePeriodMins : 10;
             weekendNoBreak = parsed.weekendNoBreak !== undefined ? parsed.weekendNoBreak : true;
             
             splitMonthEnabled = parsed.splitMonthEnabled || false;
@@ -811,6 +923,9 @@ function loadFromLocalStorage() {
             document.getElementById('splitDayInput').value = splitDayThreshold;
 
             document.getElementById('mealBreakInput').value = globalMealBreakMins;
+            const graceInput = document.getElementById('gracePeriodInput');
+            if (graceInput) graceInput.value = globalGracePeriodMins;
+
             document.getElementById('weekendNoBreakCheckbox').checked = weekendNoBreak;
             if (Object.keys(employeesData).length > 0) finishDataLoading(); 
         } catch (e) { console.error("Error al cargar datos:", e); }
@@ -962,7 +1077,13 @@ async function downloadFromCloud() {
         const json = await response.json();
 
         if (json.result) {
-            localStorage.setItem('asistenciaSystemData', json.result);
+            try {
+                let parsedCloud = JSON.parse(json.result);
+                parsedCloud.timestamp = Date.now(); // Actualizar fecha de guardado al importar
+                localStorage.setItem('asistenciaSystemData', JSON.stringify(parsedCloud));
+            } catch (e) {
+                localStorage.setItem('asistenciaSystemData', json.result);
+            }
             alert("✅ ¡Datos importados con éxito! La página se recargará para aplicar los cambios.");
             location.reload();
         } else {
@@ -1076,23 +1197,33 @@ window.generateReportText = function() {
 }
 
 // 5. Función para copiar el texto al portapapeles
-window.copyReportToClipboard = function() {
+window.copyReportToClipboard = async function() {
     const textarea = document.getElementById('reportTextArea');
     if (!textarea) return;
-    
-    // Seleccionar y copiar
-    textarea.select();
-    textarea.setSelectionRange(0, 99999); // Para compatibilidad móvil
-    
+    const textToCopy = textarea.value;
+
     try {
-        document.execCommand('copy');
-        alert('✅ ¡Reporte copiado al portapapeles exitosamente!');
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(textToCopy);
+            alert('✅ ¡Reporte copiado al portapapeles exitosamente!');
+        } else {
+            textarea.select();
+            textarea.setSelectionRange(0, 99999);
+            document.execCommand('copy');
+            window.getSelection().removeAllRanges();
+            alert('✅ ¡Reporte copiado al portapapeles exitosamente!');
+        }
     } catch (err) {
-        alert('❌ Error al copiar. Por favor, cópialo manualmente.');
+        try {
+            textarea.select();
+            textarea.setSelectionRange(0, 99999);
+            document.execCommand('copy');
+            window.getSelection().removeAllRanges();
+            alert('✅ ¡Reporte copiado al portapapeles exitosamente!');
+        } catch (e) {
+            alert('❌ Error al copiar. Por favor, cópialo manualmente.');
+        }
     }
-    
-    // Quitar la selección para que se vea bien
-    window.getSelection().removeAllRanges();
 }
 
 // 6. 渲染第三頁：遲到天數統計
@@ -1119,21 +1250,29 @@ function populateLateDays() {
         let isActive = (emp.name === currentSelectedEmployee);
         let activeClass = isActive ? "active" : "";
         
-        let textHtml = "";
-        if (emp.lateDays === 0) {
-            textHtml = `<span style="color:var(--success); font-weight:600; font-size:12px;">✅ Sin retrasos</span>`;
-        } else {
-            let diaTexto = emp.lateDays === 1 ? "día tarde" : "días tarde";
-            textHtml = `<span style="color:var(--danger); font-weight:600; font-size:12px;">❌ ${emp.lateDays} ${diaTexto}</span>`;
-        }
+        let diaTexto = emp.lateDays === 1 ? "día tarde" : "días tarde";
+        let textHtml = emp.lateDays === 0
+            ? `<span style="color:var(--success); font-weight:600; font-size:12px;">✅ Sin retrasos</span>`
+            : `<span style="color:var(--danger); font-weight:600; font-size:12px;">❌ ${emp.lateDays} ${diaTexto}</span>`;
 
-        // Ñamoĩ CSS ikatu hag̃uáicha umi téra oñekytĩ porã
-        listEl.innerHTML += `
-            <div class="dropdown-item ${activeClass}" onclick="selectEmpFromLeaderboard('${emp.name}')" style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-                <span class="emp-name" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;" title="${emp.name}">👤 ${emp.name}</span>
-                <span style="flex-shrink: 0; text-align: right;">${textHtml}</span>
-            </div>
-        `;
+        const itemEl = document.createElement('div');
+        itemEl.className = `dropdown-item ${activeClass}`;
+        itemEl.style.cssText = "display: flex; justify-content: space-between; align-items: center; gap: 8px;";
+        itemEl.onclick = () => selectEmpFromLeaderboard(emp.name);
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = "emp-name";
+        nameSpan.style.cssText = "white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;";
+        nameSpan.title = emp.name;
+        nameSpan.textContent = `👤 ${emp.name}`;
+
+        const statusSpan = document.createElement('span');
+        statusSpan.style.cssText = "flex-shrink: 0; text-align: right;";
+        statusSpan.innerHTML = textHtml;
+
+        itemEl.appendChild(nameSpan);
+        itemEl.appendChild(statusSpan);
+        listEl.appendChild(itemEl);
     });
 }
 
@@ -1209,13 +1348,25 @@ function populateLeaderboard() {
         let isActive = (emp.name === currentSelectedEmployee);
         let activeClass = isActive ? "active" : "";
 
-        // Ñamoĩ CSS ikatu hag̃uáicha umi téra oñekytĩ porã
-        listEl.innerHTML += `
-            <div class="dropdown-item ${activeClass}" onclick="selectEmpFromLeaderboard('${emp.name}')" style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-                <span class="emp-name" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;" title="${emp.name}">${badge} ${emp.name}</span>
-                <span class="late-time" style="flex-shrink: 0; text-align: right;">${formatMins(emp.lateMins)}</span>
-            </div>
-        `;
+        const itemEl = document.createElement('div');
+        itemEl.className = `dropdown-item ${activeClass}`;
+        itemEl.style.cssText = "display: flex; justify-content: space-between; align-items: center; gap: 8px;";
+        itemEl.onclick = () => selectEmpFromLeaderboard(emp.name);
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = "emp-name";
+        nameSpan.style.cssText = "white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;";
+        nameSpan.title = emp.name;
+        nameSpan.textContent = `${badge} ${emp.name}`;
+
+        const lateSpan = document.createElement('span');
+        lateSpan.className = "late-time";
+        lateSpan.style.cssText = "flex-shrink: 0; text-align: right;";
+        lateSpan.textContent = formatMins(emp.lateMins);
+
+        itemEl.appendChild(nameSpan);
+        itemEl.appendChild(lateSpan);
+        listEl.appendChild(itemEl);
     });
 }
 

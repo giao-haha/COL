@@ -3,7 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Sistema de Cálculo de Asistencia y Nómina - Procesamiento de registros de asistencia en PDF y Excel">
     <title>Sistema de Cálculo de Asistencia y Nómina</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>☁️</text></svg>">
     
     <!-- Bibliotecas externas -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
@@ -13,13 +17,13 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
     <!-- Hoja de estilos -->
-    <link rel="stylesheet" href="style.css?v=9.2">
+    <link rel="stylesheet" href="style.css?v=9.3">
 </head>
 <body>
 
 <div class="container">
     <h1>
-        <span>☁️ Sistema de Cálculo de Asistencia y Nómina v9.2</span>
+        <span>☁️ Sistema de Cálculo de Asistencia y Nómina v9.3</span>
         <div style="display: flex; gap: 10px; flex-wrap: wrap;">
             <button class="btn btn-blue" onclick="uploadToCloud()" style="background-color: #0ea5e9;">☁️ Respaldar (Nube)</button>
             <button class="btn btn-green" onclick="downloadFromCloud()">📥 Importar (Nube)</button>
@@ -141,11 +145,17 @@
         <div class="settings-grid" id="settingsGrid"></div>
         
         <div style="background: white; padding: 20px; border-radius: var(--radius-md); border: 1px solid #fef08a; margin-bottom: 20px;">
-            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap;">
                 <strong style="color: #92400e; font-size: 15px;">🍽️ Descanso diario a deducir:</strong>
-                <input type="number" id="mealBreakInput" value="30" style="width: 90px;"> 
+                <input type="number" id="mealBreakInput" value="30" style="width: 90px;" min="0"> 
                 <span style="font-weight: 500; color:#92400e;">mins</span>
                 <span class="empty-cell-text" style="margin-left: 10px;">(Se deducirá del tiempo total en días normales)</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap;">
+                <strong style="color: #92400e; font-size: 15px;">⏳ Tolerancia de gracia:</strong>
+                <input type="number" id="gracePeriodInput" value="10" style="width: 90px;" min="0"> 
+                <span style="font-weight: 500; color:#92400e;">mins</span>
+                <span class="empty-cell-text" style="margin-left: 10px;">(Tiempo de tolerancia antes de contabilizar retraso)</span>
             </div>
             <div style="padding-top: 12px; border-top: 1px dashed #fcd34d;">
                 <label style="cursor: pointer; font-weight: 600; color: #b45309; display: flex; align-items: center; gap: 8px;">
@@ -233,6 +243,6 @@
 <div id="pdf-export-container"></div>
 
 <!-- Lógica del Sistema -->
-<script src="script.js?v=9.2"></script>
+<script src="script.js?v=9.3"></script>
 </body>
 </html>
