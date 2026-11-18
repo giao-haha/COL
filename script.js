@@ -3,6 +3,7 @@ let employeesData = {};
 let currentSelectedEmployee = "";
 let globalMealBreakMins = 30;
 let globalGracePeriodMins = 10; 
+let globalHolidays = []; 
 let weekendNoBreak = true; 
 let splitMonthEnabled = false;   
 let splitDayThreshold = 15;      
@@ -97,6 +98,10 @@ function finishDataLoading() {
     // 隱藏上傳檔案的區塊
     const uploadSection = document.querySelector('.upload-section');
     if (uploadSection) uploadSection.style.display = 'none';
+
+    if (globalHolidays && globalHolidays.length > 0) {
+        applyHolidaysToData();
+    }
 
     populateEmployeeDropdown();
     document.getElementById('loading').style.display = 'none';
@@ -361,11 +366,170 @@ function formatMins(mins) {
     return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
+// ==========================================
+// 🗓️ GESTIÓN DE DÍAS FESTIVOS (SELECCIÓN MÚLTIPLE)
+// ==========================================
+
+function renderHolidayGrid() {
+    const container = document.getElementById('holidayGrid');
+    if (!container) return;
+    container.innerHTML = '';
+
+    for (let day = 1; day <= 31; day++) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = day;
+        btn.setAttribute('data-day', day);
+
+        const isSelected = globalHolidays.includes(day);
+        if (isSelected) {
+            btn.style.cssText = 'height:38px; border-radius:6px; font-weight:700; font-size:13px; cursor:pointer; background-color:#d97706; color:#ffffff; border:1px solid #b45309; box-shadow:0 2px 4px rgba(217,119,6,0.3); transition:all 0.15s ease;';
+        } else {
+            btn.style.cssText = 'height:38px; border-radius:6px; font-weight:500; font-size:13px; cursor:pointer; background-color:#f8fafc; color:#334155; border:1px solid #cbd5e1; transition:all 0.15s ease;';
+        }
+
+        btn.onmouseover = function() {
+            if (!globalHolidays.includes(day)) btn.style.backgroundColor = '#e2e8f0';
+        };
+        btn.onmouseout = function() {
+            if (!globalHolidays.includes(day)) btn.style.backgroundColor = '#f8fafc';
+        };
+
+        btn.onclick = () => toggleHoliday(day);
+        container.appendChild(btn);
+    }
+    updateSelectedHolidaysLabel();
+}
+
+function toggleHoliday(day) {
+    const index = globalHolidays.indexOf(day);
+    if (index === -1) {
+        globalHolidays.push(day);
+        globalHolidays.sort((a, b) => a - b);
+    } else {
+        globalHolidays.splice(index, 1);
+    }
+    renderHolidayGrid();
+}
+
+function updateSelectedHolidaysLabel() {
+    const label = document.getElementById('selectedFestivosLabel');
+    if (!label) return;
+    if (globalHolidays.length === 0) {
+        label.textContent = "Ninguno seleccionado";
+        label.style.color = "#94a3b8";
+    } else {
+        label.textContent = `Días seleccionados: 【 ${globalHolidays.join(', ')} 】`;
+        label.style.color = "#b45309";
+    }
+}
+
+window.clearHolidaysSelection = function() {
+    globalHolidays = [];
+    renderHolidayGrid();
+};
+
+function applyHolidaysToData() {
+    if (!employeesData || Object.keys(employeesData).length === 0) return 0;
+    let modifiedCount = 0;
+
+    Object.keys(employeesData).forEach(emp => {
+        employeesData[emp].forEach(row => {
+            if (!row.date) return;
+            let dayNum = parseInt(row.date.split('/')[0], 10);
+            if (globalHolidays.includes(dayNum)) {
+                if (!row.remark || row.remark === "" || row.remark === "Descanso") {
+                    row.remark = "Día Festivo";
+                    modifiedCount++;
+                }
+            } else {
+                if (row.remark === "Día Festivo") {
+                    row.remark = "";
+                    modifiedCount++;
+                }
+            }
+        });
+    });
+    return modifiedCount;
+}
+
+// ==========================================
+// 🏖️ ASIGNAR FINES DE SEMANA COMO DESCANSO
+// ==========================================
+
+window.applyWeekendDescanso = function(dayName) {
+    const isSabado = (dayName === 'sábado');
+    const dayDisplay = isSabado ? 'Sábados' : 'Domingos';
+
+    if (!employeesData || Object.keys(employeesData).length === 0) {
+        alert("⚠️ No hay datos de empleados cargados. Primero suba un archivo de asistencia.");
+        return;
+    }
+
+    let totalTargetDays = 0;
+    let markedDescansoDays = 0;
+
+    Object.keys(employeesData).forEach(emp => {
+        employeesData[emp].forEach(row => {
+            if (normalizeDay(row.day) === dayName) {
+                let hasPunch = (row.adjustedRecord || row.record || "").includes("-");
+                if (!hasPunch) {
+                    totalTargetDays++;
+                    if (row.remark === "Descanso") markedDescansoDays++;
+                }
+            }
+        });
+    });
+
+    if (totalTargetDays === 0) {
+        alert(`ℹ️ No se encontraron ${dayDisplay} sin marcaje.`);
+        return;
+    }
+
+    const allAlreadyMarked = (markedDescansoDays === totalTargetDays && totalTargetDays > 0);
+    const confirmMsg = allAlreadyMarked
+        ? `Todos los ${dayDisplay} sin marcaje ya están marcados como 【Descanso】.\n\n¿Desea DESMARCARLOS y volver a dejarlos sin nota?`
+        : `¿Marcar todos los ${dayDisplay} sin marcaje como 【Descanso】 para todos los empleados (${totalTargetDays - markedDescansoDays} registros)?\n\n(Los empleados que registraron horas de trabajo NO serán modificados).`;
+
+    if (!confirm(confirmMsg)) return;
+
+    let modifiedCount = 0;
+    Object.keys(employeesData).forEach(emp => {
+        employeesData[emp].forEach(row => {
+            if (normalizeDay(row.day) === dayName) {
+                let hasPunch = (row.adjustedRecord || row.record || "").includes("-");
+                if (!hasPunch) {
+                    if (allAlreadyMarked) {
+                        if (row.remark === "Descanso") {
+                            row.remark = "";
+                            modifiedCount++;
+                        }
+                    } else {
+                        if (!row.remark || row.remark === "") {
+                            row.remark = "Descanso";
+                            modifiedCount++;
+                        }
+                    }
+                }
+            }
+        });
+    });
+
+    if (currentSelectedEmployee) renderTable(currentSelectedEmployee);
+    saveToLocalStorage();
+    alert(`✅ ¡Operación completada! Se actualizaron ${modifiedCount} registros de ${dayDisplay}.`);
+};
+
 function toggleSettings() {
     const panel = document.getElementById('settingsPanel');
     if (panel.style.display === 'none' || panel.style.display === '') {
-        panel.style.display = 'block'; document.getElementById('settingScope').value = 'global'; switchSettingScope(); 
-    } else { panel.style.display = 'none'; }
+        panel.style.display = 'block'; 
+        document.getElementById('settingScope').value = 'global'; 
+        switchSettingScope(); 
+        renderHolidayGrid();
+    } else { 
+        panel.style.display = 'none'; 
+    }
 }
 
 function switchSettingScope() {
@@ -459,6 +623,7 @@ function saveSettings() {
         });
         alert(`✅ ¡Horario personal para [${currentSelectedEmployee}] guardado!`);
     }
+    applyHolidaysToData();
     document.getElementById('settingsPanel').style.display = 'none';
     if(currentSelectedEmployee) renderTable(currentSelectedEmployee); 
     saveToLocalStorage();
@@ -879,7 +1044,8 @@ function saveToLocalStorage() {
         timestamp: Date.now(), // Marca de tiempo para expiración automática
         employeesData, globalSchedules, employeeSchedules, 
         globalMealBreakMins, globalGracePeriodMins, weekendNoBreak, 
-        splitMonthEnabled, splitDayThreshold  
+        splitMonthEnabled, splitDayThreshold,
+        globalHolidays  
     };
     try {
         localStorage.setItem('asistenciaSystemData', JSON.stringify(dataToSave));
@@ -915,6 +1081,7 @@ function loadFromLocalStorage() {
             employeeSchedules = parsed.employeeSchedules || {};
             globalMealBreakMins = parsed.globalMealBreakMins !== undefined ? parsed.globalMealBreakMins : 30;
             globalGracePeriodMins = parsed.globalGracePeriodMins !== undefined ? parsed.globalGracePeriodMins : 10;
+            globalHolidays = parsed.globalHolidays || [];
             weekendNoBreak = parsed.weekendNoBreak !== undefined ? parsed.weekendNoBreak : true;
             
             splitMonthEnabled = parsed.splitMonthEnabled || false;
@@ -926,9 +1093,13 @@ function loadFromLocalStorage() {
             const graceInput = document.getElementById('gracePeriodInput');
             if (graceInput) graceInput.value = globalGracePeriodMins;
 
+            renderHolidayGrid();
+
             document.getElementById('weekendNoBreakCheckbox').checked = weekendNoBreak;
             if (Object.keys(employeesData).length > 0) finishDataLoading(); 
         } catch (e) { console.error("Error al cargar datos:", e); }
+    } else {
+        renderHolidayGrid();
     }
 }
 

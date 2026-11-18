@@ -17,13 +17,13 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
     <!-- Hoja de estilos -->
-    <link rel="stylesheet" href="style.css?v=9.3">
+    <link rel="stylesheet" href="style.css?v=9.4">
 </head>
 <body>
 
 <div class="container">
     <h1>
-        <span>☁️ Sistema de Cálculo de Asistencia y Nómina v9.3</span>
+        <span>☁️ Sistema de Cálculo de Asistencia y Nómina v9.4</span>
         <div style="display: flex; gap: 10px; flex-wrap: wrap;">
             <button class="btn btn-blue" onclick="uploadToCloud()" style="background-color: #0ea5e9;">☁️ Respaldar (Nube)</button>
             <button class="btn btn-green" onclick="downloadFromCloud()">📥 Importar (Nube)</button>
@@ -164,6 +164,34 @@
                 </label>
             </div>
         </div>
+
+        <!-- Tarjeta de Días Festivos del Mes (Multi-selección) -->
+        <div style="background: white; padding: 20px; border-radius: var(--radius-md); border: 1px solid #fef08a; margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                <strong style="color: #92400e; font-size: 15px;">🎉 Días Festivos del Mes (Selección Múltiple):</strong>
+                <span id="selectedFestivosLabel" style="font-size: 13px; font-weight: 600; color: #b45309;">Ninguno seleccionado</span>
+            </div>
+            <p style="font-size: 13px; color: var(--text-muted); margin-top: 0; margin-bottom: 12px;">
+                Haga clic en los días del mes para marcarlos o desmarcarlos. Se aplicarán automáticamente como <strong>Día Festivo (Pagado)</strong> para todos los empleados.
+            </p>
+            <div id="holidayGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap: 8px; margin-bottom: 14px;"></div>
+            <div style="display: flex; justify-content: flex-end;">
+                <button type="button" class="btn" style="background: #f1f5f9; color: #475569; padding: 6px 12px; font-size: 12px;" onclick="clearHolidaysSelection()">🗑️ Desmarcar Todos los Festivos</button>
+            </div>
+        </div>
+
+        <!-- Tarjeta de Acciones Rápidas para Fines de Semana (Descanso) -->
+        <div style="background: white; padding: 20px; border-radius: var(--radius-md); border: 1px solid #fef08a; margin-bottom: 20px;">
+            <strong style="color: #92400e; font-size: 15px; display: block; margin-bottom: 6px;">🏖️ Asignar Fines de Semana como Descanso:</strong>
+            <p style="font-size: 13px; color: var(--text-muted); margin-top: 0; margin-bottom: 14px;">
+                Asigna 【Descanso】 en lote a los días de fin de semana que no tengan registro de marcaje para todos los empleados (los que hayan trabajado y registrado horas no se modificarán).
+            </p>
+            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                <button type="button" class="btn" style="background-color: #8b5cf6; color: white; padding: 9px 16px; font-size: 13px;" onclick="applyWeekendDescanso('sábado')">🏖️ Marcar todos los Sábados como Descanso</button>
+                <button type="button" class="btn" style="background-color: #6366f1; color: white; padding: 9px 16px; font-size: 13px;" onclick="applyWeekendDescanso('domingo')">🏖️ Marcar todos los Domingos como Descanso</button>
+            </div>
+        </div>
+
         <button class="btn btn-blue" onclick="saveSettings()" style="padding: 10px 24px; font-size: 14px;">💾 Guardar Configuración y Recalcular</button>
     </div>
 
@@ -243,6 +271,6 @@
 <div id="pdf-export-container"></div>
 
 <!-- Lógica del Sistema -->
-<script src="script.js?v=9.3"></script>
+<script src="script.js?v=9.4"></script>
 </body>
 </html>
