@@ -17,13 +17,13 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
     <!-- Hoja de estilos -->
-    <link rel="stylesheet" href="style.css?v=9.5">
+    <link rel="stylesheet" href="style.css?v=9.6">
 </head>
 <body>
 
 <div class="container">
     <h1>
-        <span>☁️ Sistema de Cálculo de Asistencia y Nómina v9.5</span>
+        <span>☁️ Sistema de Cálculo de Asistencia y Nómina v9.6</span>
         <div style="display: flex; gap: 10px; flex-wrap: wrap;">
             <button class="btn btn-blue" onclick="uploadToCloud()" style="background-color: #0ea5e9;">☁️ Respaldar (Nube)</button>
             <button class="btn btn-green" onclick="downloadFromCloud()">📥 Importar (Nube)</button>
@@ -219,13 +219,18 @@
 
     <!-- Panel de Control -->
     <div class="panel control-panel" id="controlPanel">
-        <div class="employee-selector">
+        <div class="employee-selector" style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px;">
             <label for="empSelect">Seleccionar Empleado:</label>
-            <select id="empSelect" onchange="switchEmployee()" style="margin-left: 12px; min-width: 200px; font-weight: 600;"></select>
+            <select id="empSelect" onchange="switchEmployee()" style="margin-left: 4px; min-width: 240px; font-weight: 600;"></select>
+            <div style="position: relative; display: inline-flex; align-items: center;">
+                <input type="text" id="empSearchInput" placeholder="🔍 Buscar empleado..." oninput="filterEmployeeDropdown()" onkeydown="if(event.key==='Escape')clearEmpSearch();" style="padding: 7px 26px 7px 10px; border: 1px solid #cbd5e1; border-radius: var(--radius-md); font-size: 13px; width: 175px; outline: none; background: #fff; transition: border-color 0.2s, box-shadow 0.2s;" onfocus="this.style.borderColor='#3b82f6'; this.style.boxShadow='0 0 0 3px rgba(59,130,246,0.15)';" onblur="this.style.borderColor='#cbd5e1'; this.style.boxShadow='none';">
+                <span id="clearSearchBtn" onclick="clearEmpSearch()" style="position: absolute; right: 8px; cursor: pointer; color: #94a3b8; font-size: 12px; display: none; font-weight: bold; user-select: none;" title="Limpiar búsqueda">✕</span>
+            </div>
         </div>
-        <div class="employee-name-display">
-            <span style="color:var(--text-muted); font-weight:500; font-size:14px; margin-right:8px;">Viendo actualmente:</span>
+        <div class="employee-name-display" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <span style="color:var(--text-muted); font-weight:500; font-size:14px;">Viendo actualmente:</span>
             <span id="currentName">--</span>
+            <span id="currentStatusBadge" style="font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 20px; display: none;"></span>
         </div>
     </div>
 
@@ -282,6 +287,6 @@
 <div id="pdf-export-container"></div>
 
 <!-- Lógica del Sistema -->
-<script src="script.js?v=9.5"></script>
+<script src="script.js?v=9.6"></script>
 </body>
 </html>

@@ -644,25 +644,145 @@ function saveSettings() {
     applyHolidaysToData();
     document.getElementById('settingsPanel').style.display = 'none';
     if(currentSelectedEmployee) renderTable(currentSelectedEmployee); 
+    populateEmployeeDropdown();
     saveToLocalStorage();
 }
 
-window.switchEmployee = function() {
+function getEmployeeStatus(empName) {
+    const records = employeesData[empName];
+    if (!records || records.length === 0) return { isPending: false, pendingCount: 0 };
+    
+    const result = calculateEmployeeData(empName);
+    let pendingCount = 0;
+    for (let i = 0; i < result.rows.length; i++) {
+        const r = result.rows[i];
+        if (!r.data.finalStatus && (r.sysCode === 'EMPTY' || r.sysCode === 'PARTIAL')) {
+            pendingCount++;
+        }
+    }
+    return {
+        isPending: pendingCount > 0,
+        pendingCount: pendingCount
+    };
+}
+
+function updateCurrentStatusBadge(empName) {
+    const badge = document.getElementById('currentStatusBadge');
+    if (!badge) return;
+    if (!empName || !employeesData[empName]) {
+        badge.style.display = 'none';
+        return;
+    }
+    const status = getEmployeeStatus(empName);
+    badge.style.display = 'inline-block';
+    if (status.isPending) {
+        badge.style.background = '#fef2f2';
+        badge.style.color = '#dc2626';
+        badge.style.border = '1px solid #fecaca';
+        badge.innerText = `🔴 Pendiente (${status.pendingCount} ${status.pendingCount === 1 ? 'día' : 'días'})`;
+    } else {
+        badge.style.background = '#f0fdf4';
+        badge.style.color = '#16a34a';
+        badge.style.border = '1px solid #bbf7d0';
+        badge.innerText = `🟢 Listo (Completado)`;
+    }
+}
+
+function switchEmployee() {
     currentSelectedEmployee = document.getElementById('empSelect').value;
+    if (!currentSelectedEmployee || !employeesData[currentSelectedEmployee]) return;
+
     document.getElementById('currentName').innerText = currentSelectedEmployee;
-    document.querySelector('#settingScope option[value="personal"]').innerHTML = `👤 Solo Empleado Actual (${currentSelectedEmployee})`;
+    updateCurrentStatusBadge(currentSelectedEmployee);
+
+    const personalOpt = document.querySelector('#settingScope option[value="personal"]');
+    if (personalOpt) personalOpt.innerHTML = `👤 Solo Empleado Actual (${currentSelectedEmployee})`;
     if(document.getElementById('settingsPanel').style.display === 'block') switchSettingScope();
     renderTable(currentSelectedEmployee);
 }
+window.switchEmployee = switchEmployee;
 
-function populateEmployeeDropdown() {
+function populateEmployeeDropdown(filterText) {
     const selectEl = document.getElementById('empSelect');
+    if (!selectEl) return;
+    
+    const prevSelected = currentSelectedEmployee || selectEl.value;
+    const searchInput = document.getElementById('empSearchInput');
+    const query = (filterText !== undefined && filterText !== null ? filterText : (searchInput ? searchInput.value : "")).trim().toLowerCase();
+    
     selectEl.innerHTML = "";
-    Object.keys(employeesData).forEach(empName => {
-        const option = document.createElement('option'); option.value = empName; option.innerText = empName;
+    const allEmps = Object.keys(employeesData);
+    
+    if (allEmps.length === 0) {
+        const opt = document.createElement('option');
+        opt.value = "";
+        opt.textContent = "-- Sin empleados --";
+        selectEl.appendChild(opt);
+        return;
+    }
+
+    const matches = allEmps.filter(empName => {
+        if (!query) return true;
+        const status = getEmployeeStatus(empName);
+        const statusLabel = status.isPending ? `pendiente ${status.pendingCount}` : "listo completado";
+        return empName.toLowerCase().includes(query) || statusLabel.includes(query);
+    });
+
+    if (matches.length === 0) {
+        const opt = document.createElement('option');
+        opt.value = "";
+        opt.textContent = "🔍 Sin resultados";
+        opt.disabled = true;
+        opt.selected = true;
+        selectEl.appendChild(opt);
+        return;
+    }
+
+    matches.forEach(empName => {
+        const option = document.createElement('option');
+        option.value = empName;
+        const status = getEmployeeStatus(empName);
+        if (status.isPending) {
+            option.textContent = `🔴 ${empName} (${status.pendingCount} ${status.pendingCount === 1 ? 'pendiente' : 'pendientes'})`;
+        } else {
+            option.textContent = `🟢 ${empName} (Listo)`;
+        }
         selectEl.appendChild(option);
     });
+
+    if (matches.includes(prevSelected)) {
+        selectEl.value = prevSelected;
+    } else {
+        selectEl.value = matches[0];
+        if (currentSelectedEmployee !== matches[0]) {
+            switchEmployee();
+        }
+    }
 }
+
+function filterEmployeeDropdown() {
+    const input = document.getElementById('empSearchInput');
+    const clearBtn = document.getElementById('clearSearchBtn');
+    if (input && clearBtn) {
+        clearBtn.style.display = input.value ? 'inline-block' : 'none';
+    }
+    populateEmployeeDropdown();
+}
+window.filterEmployeeDropdown = filterEmployeeDropdown;
+
+function clearEmpSearch() {
+    const input = document.getElementById('empSearchInput');
+    const clearBtn = document.getElementById('clearSearchBtn');
+    if (input) {
+        input.value = '';
+        input.focus();
+    }
+    if (clearBtn) {
+        clearBtn.style.display = 'none';
+    }
+    populateEmployeeDropdown();
+}
+window.clearEmpSearch = clearEmpSearch;
 
 window.handleRemarkChange = function(index) {
     const sel = document.getElementById(`rmk-sel-${index}`);
@@ -959,6 +1079,7 @@ function renderTable(empName) {
         netEl.innerHTML = `<span style="color:var(--text-muted)">Compensado (0 mins)</span>`; 
         pCard.className = 'dash-card'; pCard.style.borderColor = 'var(--border-light)'; pCard.style.background = 'var(--bg-body)'; 
     }
+    updateCurrentStatusBadge(empName);
 }
 
 window.printAllReports = function() {
@@ -1143,7 +1264,9 @@ window.resetRow = function(index) {
         employeesData[currentSelectedEmployee][index].finalStatus = null;
         employeesData[currentSelectedEmployee][index].adjustedRecord = null;
         employeesData[currentSelectedEmployee][index].remark = "";
-        renderTable(currentSelectedEmployee); saveToLocalStorage();
+        renderTable(currentSelectedEmployee); 
+        populateEmployeeDropdown();
+        saveToLocalStorage();
     }
 }
 
@@ -1152,7 +1275,9 @@ window.saveRemarkOnly = function(index) {
     const selVal = document.getElementById(`rmk-sel-${index}`).value;
     if (selVal === "Otro" && !remark) { alert("¡Por favor, ingrese el motivo!"); return; }
     employeesData[currentSelectedEmployee][index].remark = remark;
-    renderTable(currentSelectedEmployee); saveToLocalStorage();
+    renderTable(currentSelectedEmployee); 
+    populateEmployeeDropdown();
+    saveToLocalStorage();
 }
 
 window.confirmStatus = function(index, finalDecision) {
@@ -1162,7 +1287,9 @@ window.confirmStatus = function(index, finalDecision) {
     if (selVal === "Otro" && !remark) { alert("¡Por favor, ingrese el motivo!"); return; }
     employeesData[currentSelectedEmployee][index].finalStatus = finalDecision;
     employeesData[currentSelectedEmployee][index].remark = remark;
-    renderTable(currentSelectedEmployee); saveToLocalStorage();
+    renderTable(currentSelectedEmployee); 
+    populateEmployeeDropdown();
+    saveToLocalStorage();
 }
 
 window.savePartialPunch = function(index, existingTime, type) {
@@ -1174,7 +1301,9 @@ window.savePartialPunch = function(index, existingTime, type) {
     employeesData[currentSelectedEmployee][index].finalStatus = null; 
     const remark = getActualRemark(index);
     if (remark) employeesData[currentSelectedEmployee][index].remark = remark;
-    renderTable(currentSelectedEmployee); saveToLocalStorage();
+    renderTable(currentSelectedEmployee); 
+    populateEmployeeDropdown();
+    saveToLocalStorage();
 }
 
 window.savePunch = function(index) {
@@ -1185,7 +1314,9 @@ window.savePunch = function(index) {
     employeesData[currentSelectedEmployee][index].finalStatus = null; 
     const remark = getActualRemark(index);
     if (remark) employeesData[currentSelectedEmployee][index].remark = remark;
-    renderTable(currentSelectedEmployee); saveToLocalStorage();
+    renderTable(currentSelectedEmployee); 
+    populateEmployeeDropdown();
+    saveToLocalStorage();
 }
 
 // ==========================================
@@ -1570,6 +1701,13 @@ function populateLeaderboard() {
 
 // 6. 點擊排行榜選項時切換員工，並關閉選單
 window.selectEmpFromLeaderboard = function(empName) {
+    const searchInput = document.getElementById('empSearchInput');
+    if (searchInput && searchInput.value) {
+        searchInput.value = '';
+        const clearBtn = document.getElementById('clearSearchBtn');
+        if (clearBtn) clearBtn.style.display = 'none';
+        populateEmployeeDropdown();
+    }
     document.getElementById('empSelect').value = empName;
     switchEmployee(); 
     document.getElementById('multiMenu').classList.remove('show');
